@@ -161,3 +161,6 @@ temp/
 # Build artifacts
 build/
 public/build/
+
+# claude.md
+CLAUDE.md

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Sidebar from "./components/Sidebar";
@@ -16,7 +17,6 @@ import OrderManagement from "./pages/OrderManagement";
 import PurchaseEventSettings from "./pages/PurchaseEventSettings";
 
 function AdminApp() {
-  const [activeTab, setActiveTab] = useState("content-generation");
   const [channels, setChannels] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [loadingChannels, setLoadingChannels] = useState(true);
@@ -43,53 +43,43 @@ function AdminApp() {
     loadChannels();
   }, []);
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case "content-generation":
-        return <ContentGeneration />;
-      case "content-list":
-        return <ContentList />;
-      case "content-group-settings":
-        return <ContentGroupSettings />;
-      case "prompt-management":
-        return <PromptManagement />;
-      case "all-users":
-        return <AllUsers selectedChannel={selectedChannel} />;
-      case "purchasers":
-        return <Purchasers />;
-      case "service-groups":
-        return <ServiceGroups />;
-      case "order-list":
-        return <OrderList />;
-      case "order-management":
-        return <OrderManagement />;
-      case "purchase-event-settings":
-        return <PurchaseEventSettings />;
-      default:
-        return (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">페이지 준비중</h1>
-            <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-              <p>해당 페이지는 준비중입니다.</p>
-            </div>
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      <div className="flex-1 overflow-auto">
-        <Topbar 
-          channels={channels}
-          selectedChannel={selectedChannel} 
-          setSelectedChannel={setSelectedChannel}
-          loadingChannels={loadingChannels}
-        />
-        {renderContent()}
+  const NotFoundPage = () => (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">페이지 준비중</h1>
+      <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+        <p>해당 페이지는 준비중입니다.</p>
       </div>
     </div>
+  );
+
+  return (
+    <Router>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 overflow-auto">
+          <Topbar 
+            channels={channels}
+            selectedChannel={selectedChannel} 
+            setSelectedChannel={setSelectedChannel}
+            loadingChannels={loadingChannels}
+          />
+          <Routes>
+            <Route path="/" element={<Navigate to="/content-generation" replace />} />
+            <Route path="/content-generation" element={<ContentGeneration />} />
+            <Route path="/content-list" element={<ContentList />} />
+            <Route path="/content-group-settings" element={<ContentGroupSettings />} />
+            <Route path="/prompt-management" element={<PromptManagement />} />
+            <Route path="/all-users" element={<AllUsers selectedChannel={selectedChannel} />} />
+            <Route path="/purchasers" element={<Purchasers />} />
+            <Route path="/service-groups" element={<ServiceGroups selectedChannel={selectedChannel} />} />
+            <Route path="/order-list" element={<OrderList />} />
+            <Route path="/order-management" element={<OrderManagement />} />
+            <Route path="/purchase-event-settings" element={<PurchaseEventSettings />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </div>
+      </div>
+    </Router>
   );
 }
 

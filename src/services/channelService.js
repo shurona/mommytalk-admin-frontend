@@ -6,11 +6,18 @@ import api from './api';
 export const channelService = {
   /**
    * 채널 목록 조회
-   * @returns {Promise} API 응답
+   * @returns {Promise} API 응답 - ApiResponse<Channel[]> 구조
    */
   async getChannels() {
     const response = await api.get('/v1/channels');
-    return response.data;
+    
+    // ApiResponse<T> 구조에서 data 추출
+    if (response.data.message === 'Success' && response.data.data) {
+      return response.data.data;칟
+    }
+    
+    // 에러 발생 시
+    throw new Error(response.data.message || '채널 목록을 불러올 수 없습니다.');
   }
 };
 

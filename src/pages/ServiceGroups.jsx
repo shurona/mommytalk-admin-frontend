@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
+import { userGroupService } from "../services/userGroupService.js";
 
 const PRODUCTS = ["마미톡365", "마미톡365+마미보카"];
 const nowStr = () => new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -63,14 +64,44 @@ const initialCustomGroups = [
   },
 ];
 
-export default function ServiceGroups() {
-  const [autoGroups, setAutoGroups] = useState(initialAutoGroups);
-  const [customGroups, setCustomGroups] = useState(initialCustomGroups);
+export default function ServiceGroups({ selectedChannel }) {
+  const [autoGroups, setAutoGroups] = useState([]);
+  const [customGroups, setCustomGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [view, setView] = useState({ mode: "list", id: null });
   const [newTitle, setNewTitle] = useState("");
   const [addPhone, setAddPhone] = useState("");
-  const [editTitle, setEditTitle] = useState("");       // ← 제목 편집 상태
+  const [editTitle, setEditTitle] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  // 그룹 목록 로드
+  const loadUserGroups = async () => {
+    if (!selectedChannel?.channelId) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const groups = await userGroupService.getUserGroups(selectedChannel.channelId);
+      
+      // 자동 그룹과 커스텀 그룹 분리
+      const autoGroupsList = groups.filter(g => g.type === 'auto-active' || g.type === 'auto-ended');
+      const customGroupsList = groups.filter(g => g.type === 'custom');
+      
+      setAutoGroups(autoGroupsList);
+      setCustomGroups(customGroupsList);
+    } catch (error) {
+      console.error('Failed to load user groups:', error);
+      setError('그룹 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 채널 변경 시 그룹 목록 로드
+  useEffect(() => {
+    loadUserGroups();
+  }, [selectedChannel?.channelId]);
 
   const allGroups = useMemo(() => [...autoGroups, ...customGroups], [autoGroups, customGroups]);
   const byId = (id) => allGroups.find((g) => g.id === id) || null;
@@ -78,23 +109,32 @@ export default function ServiceGroups() {
   /** 상품별 자동 그룹 묶음 (한 화면에 모두 표시) */
   const productAutoMap = useMemo(() => {
     const map = {};
-    PRODUCTS.forEach((p) => (map[p] = { active: [], ended: [] }));
+    
+    // 실제 API에서 받은 그룹들의 상품명을 기준으로 맵 생성
     autoGroups.forEach((g) => {
-      if (!map[g.product]) return;
+      if (!g.product) return;
+      
+      if (!map[g.product]) {
+        map[g.product] = { active: [], ended: [] };
+      }
+      
       if (g.type === "auto-active") map[g.product].active.push(g);
       else if (g.type === "auto-ended") map[g.product].ended.push(g);
     });
+    
     return map;
   }, [autoGroups]);
 
   const stats = (g) => {
-    const registered = g.members.length;
-    const friendCount = g.members.filter((m) => m.friend).length;
+    const registered = g.memberCount || 0;
+    const friendCount = g.friendCount || 0;
     return { registered, friendCount };
   };
 
-  const openDetail = (id) => {
+  const openDetail = async (id) => {
     setView({ mode: "detail", id });
+    await loadGroupDetail(id);
+    
     const g = byId(id);
     if (g && g.type === "custom") {
       setEditTitle(g.title);
@@ -107,22 +147,18 @@ export default function ServiceGroups() {
   const backToList = () => setView({ mode: "list", id: null });
 
   /** 커스텀 그룹 생성 (상품과 무관) */
-  const createCustomGroup = () => {
+  const createCustomGroup = async () => {
     const t = newTitle.trim();
-    if (!t) return;
-    const id = `custom_${Date.now()}`;
-    setCustomGroups((p) => [
-      ...p,
-      {
-        id,
-        title: t,
-        type: "custom",
-        createdAt: nowStr().slice(0, 10),
-        updatedAt: nowStr().slice(0, 10),
-        members: [],
-      },
-    ]);
-    setNewTitle("");
+    if (!t || !selectedChannel?.channelId) return;
+    
+    try {
+      const newGroup = await userGroupService.createCustomGroup(selectedChannel.channelId, t);
+      setCustomGroups((prev) => [...prev, newGroup]);
+      setNewTitle("");
+    } catch (error) {
+      console.error('Failed to create custom group:', error);
+      alert('커스텀 그룹 생성에 실패했습니다.');
+    }
   };
 
   /** 공통: 특정 그룹 업데이트 */
@@ -132,37 +168,99 @@ export default function ServiceGroups() {
   };
 
   /** 커스텀 그룹 제목 저장 */
-  const saveTitle = (groupId) => {
+  const saveTitle = async (groupId) => {
     const t = editTitle.trim();
-    if (!t) return;
-    updateGroup(groupId, (g) => ({ ...g, title: t, updatedAt: nowStr().slice(0, 10) }));
-    setIsEditingTitle(false);
+    if (!t || !selectedChannel?.channelId) return;
+    
+    try {
+      const updatedGroup = await userGroupService.updateGroupTitle(selectedChannel.channelId, groupId, t);
+      updateGroup(groupId, () => updatedGroup);
+      setIsEditingTitle(false);
+    } catch (error) {
+      console.error('Failed to update group title:', error);
+      alert('그룹 제목 수정에 실패했습니다.');
+    }
   };
 
-  /** 사용자 추가: 채널 친구만 활성 등록, 미친구는 보류 */
-  const addUserToGroup = (groupId) => {
+  /** 사용자 추가 */
+  const addUserToGroup = async (groupId) => {
     const phone = addPhone.trim();
-    if (!phone) return;
-    const isFriend = phone.startsWith("010"); // 데모 규칙
-    const entry = { phone, friend: isFriend, registeredAt: nowStr() };
-    updateGroup(groupId, (g) => ({
-      ...g,
-      members: [entry, ...g.members],
-      updatedAt: nowStr().slice(0, 10),
-    }));
-    setAddPhone("");
+    if (!phone || !selectedChannel?.channelId) return;
+    
+    try {
+      await userGroupService.addUserToGroup(selectedChannel.channelId, groupId, phone);
+      // 그룹 상세 정보 다시 로드
+      await loadGroupDetail(groupId);
+      setAddPhone("");
+    } catch (error) {
+      console.error('Failed to add user to group:', error);
+      alert('사용자 추가에 실패했습니다.');
+    }
   };
 
-  const removeFromGroup = (groupId, phone) => {
-    updateGroup(groupId, (g) => ({
-      ...g,
-      members: g.members.filter((m) => m.phone !== phone),
-      updatedAt: nowStr().slice(0, 10),
-    }));
+  /** 사용자 제거 */
+  const removeFromGroup = async (groupId, userId) => {
+    if (!selectedChannel?.channelId) return;
+    
+    try {
+      await userGroupService.removeUserFromGroup(selectedChannel.channelId, groupId, userId);
+      // 그룹 상세 정보 다시 로드
+      await loadGroupDetail(groupId);
+    } catch (error) {
+      console.error('Failed to remove user from group:', error);
+      alert('사용자 제거에 실패했습니다.');
+    }
+  };
+
+  /** 그룹 상세 정보 로드 (상세 화면용) */
+  const [groupDetail, setGroupDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const loadGroupDetail = async (groupId) => {
+    if (!selectedChannel?.channelId) return;
+    
+    try {
+      setDetailLoading(true);
+      const detail = await userGroupService.getUserGroupDetail(selectedChannel.channelId, groupId);
+      setGroupDetail(detail);
+    } catch (error) {
+      console.error('Failed to load group detail:', error);
+      setError('그룹 상세 정보를 불러오는데 실패했습니다.');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   /** 리스트 화면 */
   if (view.mode === "list") {
+    if (loading) {
+      return (
+        <div className="p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
+          <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+            <p className="text-gray-500">그룹 목록을 불러오는 중...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <p className="text-red-800">{error}</p>
+            <button 
+              onClick={loadUserGroups}
+              className="mt-2 px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+            >
+              다시 시도
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="p-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
@@ -180,7 +278,7 @@ export default function ServiceGroups() {
 
         {/* 상품별 자동 그룹 전체 렌더링 */}
         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
-          {PRODUCTS.map((product) => (
+          {Object.keys(productAutoMap).map((product) => (
             <div key={product} className="bg-white border rounded-lg shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold">{product} · 자동 업데이트 그룹</h2>
@@ -190,7 +288,7 @@ export default function ServiceGroups() {
                 <div>
                   <div className="text-xs text-gray-500 mb-1">서비스 이용자</div>
                   <ul className="space-y-2">
-                    {autoGroups.filter(g => g.product===product && g.type==="auto-active").map((g) => {
+                    {productAutoMap[product].active.map((g) => {
                       const s = stats(g);
                       return (
                         <li key={g.id} className="border rounded p-3 hover:bg-gray-50">
@@ -198,7 +296,7 @@ export default function ServiceGroups() {
                             <div>
                               <div className="font-medium">{g.title}</div>
                               <div className="text-xs text-gray-500">
-                                등록수 {s.registered} · 친구수 {s.friendCount} · 생성 {g.createdAt} · 업데이트 {g.updatedAt}
+                                등록수 {s.registered} · 친구수 {s.friendCount} · 생성 {new Date(g.createdAt).toLocaleDateString()} · 업데이트 {new Date(g.updatedAt).toLocaleDateString()}
                               </div>
                             </div>
                             <button onClick={() => openDetail(g.id)} className="px-3 py-1.5 text-sm bg-white border rounded hover:bg-gray-50">
@@ -208,7 +306,7 @@ export default function ServiceGroups() {
                         </li>
                       );
                     })}
-                    {autoGroups.filter(g => g.product===product && g.type==="auto-active").length === 0 && (
+                    {productAutoMap[product].active.length === 0 && (
                       <li className="text-xs text-gray-500">서비스 이용자 그룹이 없습니다.</li>
                     )}
                   </ul>
@@ -217,7 +315,7 @@ export default function ServiceGroups() {
                 <div>
                   <div className="text-xs text-gray-500 mb-1">종료 이용자</div>
                   <ul className="space-y-2">
-                    {autoGroups.filter(g => g.product===product && g.type==="auto-ended").map((g) => {
+                    {productAutoMap[product].ended.map((g) => {
                       const s = stats(g);
                       return (
                         <li key={g.id} className="border rounded p-3 hover:bg-gray-50">
@@ -225,7 +323,7 @@ export default function ServiceGroups() {
                             <div>
                               <div className="font-medium">{g.title}</div>
                               <div className="text-xs text-gray-500">
-                                등록수 {s.registered} · 친구수 {s.friendCount} · 생성 {g.createdAt} · 업데이트 {g.updatedAt}
+                                등록수 {s.registered} · 친구수 {s.friendCount} · 생성 {new Date(g.createdAt).toLocaleDateString()} · 업데이트 {new Date(g.updatedAt).toLocaleDateString()}
                               </div>
                             </div>
                             <button onClick={() => openDetail(g.id)} className="px-3 py-1.5 text-sm bg-white border rounded hover:bg-gray-50">
@@ -235,7 +333,7 @@ export default function ServiceGroups() {
                         </li>
                       );
                     })}
-                    {autoGroups.filter(g => g.product===product && g.type==="auto-ended").length === 0 && (
+                    {productAutoMap[product].ended.length === 0 && (
                       <li className="text-xs text-gray-500">종료 이용자 그룹이 없습니다.</li>
                     )}
                   </ul>
@@ -303,7 +401,21 @@ export default function ServiceGroups() {
     );
   }
 
+  if (detailLoading) {
+    return (
+      <div className="p-6">
+        <button onClick={backToList} className="mb-3 px-3 py-2 bg-white border rounded text-sm">
+          ← 목록으로
+        </button>
+        <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+          <p className="text-gray-500">그룹 상세 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
   const s = stats(g);
+  const detail = groupDetail || g;
 
   const TitleBlock = () => {
     if (g.type !== "custom") {
@@ -383,11 +495,11 @@ export default function ServiceGroups() {
           </div>
           <div>
             <div className="text-xs text-gray-500">그룹 생성일시</div>
-            <div className="font-medium">{g.createdAt}</div>
+            <div className="font-medium">{new Date(g.createdAt).toLocaleDateString()}</div>
           </div>
           <div>
             <div className="text-xs text-gray-500">그룹 업데이트 일시</div>
-            <div className="font-medium">{g.updatedAt}</div>
+            <div className="font-medium">{new Date(g.updatedAt).toLocaleDateString()}</div>
           </div>
         </div>
       </div>
@@ -405,27 +517,26 @@ export default function ServiceGroups() {
             </tr>
           </thead>
           <tbody>
-            {g.members.map((m) => (
-              <tr key={`${g.id}-${m.phone}-${m.registeredAt}`} className="border-t">
+            {(detail.members || []).map((m) => (
+              <tr key={`${g.id}-${m.userId}-${m.registeredAt}`} className="border-t">
                 <td className="px-4 py-2 text-sm">
                   <input type="checkbox" />
                 </td>
-                <td className="px-4 py-2 text-sm">{m.phone}</td>
+                <td className="px-4 py-2 text-sm">{m.phoneNumber}</td>
                 <td className="px-4 py-2 text-xs">
-                  <span className={`px-2 py-1 rounded-full ${m.friend ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}`}>
-                    {m.friend ? "친구" : "미친구(보류)"}
+                  <span className={`px-2 py-1 rounded-full ${m.isFriend ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}`}>
+                    {m.isFriend ? "친구" : "미친구(보류)"}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-sm whitespace-nowrap">{m.registeredAt}</td>
+                <td className="px-4 py-2 text-sm whitespace-nowrap">{new Date(m.registeredAt).toLocaleString()}</td>
                 <td className="px-4 py-2 text-sm">
-                  {/* 데모에서는 auto/custom 모두 제거 허용. 운영시 auto 그룹 제거 비활성 권장 */}
-                  <button onClick={() => removeFromGroup(g.id, m.phone)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
+                  <button onClick={() => removeFromGroup(g.id, m.userId)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
                     제거
                   </button>
                 </td>
               </tr>
             ))}
-            {g.members.length === 0 && (
+            {(!detail.members || detail.members.length === 0) && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
                   아직 등록된 사용자가 없습니다.

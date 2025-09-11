@@ -17,6 +17,7 @@ export default function AllUsers({ selectedChannel }) {
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 50;
 
+
   // API 호출 함수들
   const loadUsers = async (page = 0, search = '') => {
     if (!selectedChannel?.channelId) {
@@ -49,25 +50,33 @@ export default function AllUsers({ selectedChannel }) {
     }
   };
 
-  // 초기 데이터 로드 및 채널 변경 시 새로고침
+  // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
     if (selectedChannel?.channelId) {
-      setCurrentPage(0); // 채널 변경 시 페이지 초기화
-      setSelectedUserId(null); // 선택된 사용자 초기화
+      setCurrentPage(0);
+      setSelectedUserId(null);
       setSelectedUser(null);
       loadUsers(0, q);
     }
   }, [selectedChannel?.channelId]);
   
+  // 페이지 변경 시에만 로드 (채널이 있고, 페이지가 0이 아닌 경우만)
   useEffect(() => {
-    loadUsers(currentPage, q);
+    if (selectedChannel?.channelId && currentPage > 0) {
+      loadUsers(currentPage, q);
+    }
   }, [currentPage]);
 
   // 검색어 변경 시 첫 페이지로 이동하여 검색
   const handleSearch = (searchQuery) => {
     setQ(searchQuery);
-    setCurrentPage(0);
-    loadUsers(0, searchQuery);
+    if (currentPage === 0) {
+      // 이미 0페이지면 직접 호출
+      loadUsers(0, searchQuery);
+    } else {
+      // 0이 아니면 setCurrentPage(0)으로 useEffect 트리거
+      setCurrentPage(0);
+    }
   };
 
   // 페이지 변경
@@ -113,13 +122,11 @@ export default function AllUsers({ selectedChannel }) {
 
   const startUserEdit = (user) => {
     setUserEdit({
-      userId: user.key || user.id,
-      phone: user.phone || '',
+      userId: user.userId,
+      phoneNumber: user.phoneNumber || '',
       userLevel: user.userLevel ?? 1,
-      child: {
-        level: user.child?.level ?? 0,
-        name: user.child?.name || ''
-      }
+      childLevel: user.childLevel ?? 0,
+      childName: user.childName || ''
     });
   };
 
@@ -129,9 +136,10 @@ export default function AllUsers({ selectedChannel }) {
     try {
       setSavingUser(true);
       await userService.updateUser(userEdit.userId, {
-        phone: userEdit.phone,
+        phoneNumber: userEdit.phoneNumber,
         userLevel: userEdit.userLevel,
-        child: userEdit.child
+        childLevel: userEdit.childLevel,
+        childName: userEdit.childName
       });
       
       // 목록 및 상세정보 새로고침
@@ -155,7 +163,7 @@ export default function AllUsers({ selectedChannel }) {
 
   const startEntitlementEdit = (user) => {
     setEntitlementEdit({
-      userId: user.key || user.id,
+      userId: user.userId,
       entitlements: (user.entitlements || []).map(ent => ({
         id: ent.id,
         productName: ent.productName,
@@ -301,17 +309,14 @@ export default function AllUsers({ selectedChannel }) {
             <thead className="bg-gray-50">
               <tr>
                 {[
-                  "고유키",
+                  "사용자 ID",
                   "이메일",
-                  "회원 그룹",
                   "이름",
                   "연락처",
                   "가입일",
                   "서비스 구매일(최신)",
                   "구매 상품명(최신)",
-                  "총 구매금액",
-                  "LINE ID",
-                  "KAKAO ID",
+                  "소셜 ID",
                   "사용자 레벨",
                   "자녀정보(레벨/이름)",
                   "구매횟수",
@@ -325,25 +330,25 @@ export default function AllUsers({ selectedChannel }) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     데이터를 불러오는 중...
                   </td>
                 </tr>
               ) : !selectedChannel ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     채널을 선택해주세요.
                   </td>
                 </tr>
               ) : usersData.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     검색 결과가 없습니다.
                   </td>
                 </tr>
               ) : (
                 usersData.map((u) => {
-                  const userId = u.key || u.id;
+                  const userId = u.userId;
                   return (
                     <tr
                       key={userId}
@@ -353,10 +358,9 @@ export default function AllUsers({ selectedChannel }) {
                       onClick={() => handleUserSelect(userId)}
                     >
                       <td className="px-4 py-2 text-sm">{userId}</td>
-                      <td className="px-4 py-2 text-sm">{u.email}</td>
-                      <td className="px-4 py-2 text-sm">{u.adminFlag}</td>
-                      <td className="px-4 py-2 text-sm">{u.name}</td>
-                      <td className="px-4 py-2 text-sm">{u.phone}</td>
+                      <td className="px-4 py-2 text-sm">{u.email || '-'}</td>
+                      <td className="px-4 py-2 text-sm">{u.name || '-'}</td>
+                      <td className="px-4 py-2 text-sm">{u.phoneNumber || '-'}</td>
                       <td className="px-4 py-2 text-sm whitespace-nowrap">
                         {u.signupAt ? new Date(u.signupAt).toLocaleString('ko-KR') : '-'}
                       </td>
@@ -364,14 +368,10 @@ export default function AllUsers({ selectedChannel }) {
                         {u.latestPurchaseAt ? new Date(u.latestPurchaseAt).toLocaleString('ko-KR') : '-'}
                       </td>
                       <td className="px-4 py-2 text-sm">{u.latestProductName || '-'}</td>
+                      <td className="px-4 py-2 text-sm">{u.socialId || '-'}</td>
+                      <td className="px-4 py-2 text-sm">Lv{u.userLevel ?? 0}</td>
                       <td className="px-4 py-2 text-sm">
-                        {u.totalAmount ? `${u.totalAmount.toLocaleString()}원` : '-'}
-                      </td>
-                      <td className="px-4 py-2 text-sm">{u.lineId || '-'}</td>
-                      <td className="px-4 py-2 text-sm">{u.kakaoId || '-'}</td>
-                      <td className="px-4 py-2 text-sm">Lv{u.userLevel}</td>
-                      <td className="px-4 py-2 text-sm">
-                        {u.child ? `Lv${u.child.level} / ${u.child.name}` : "-"}
+                        {u.childLevel && u.childName ? `Lv${u.childLevel} / ${u.childName}` : "-"}
                       </td>
                       <td className="px-4 py-2 text-sm">{u.purchaseCount || 0}</td>
                     </tr>
@@ -392,25 +392,24 @@ export default function AllUsers({ selectedChannel }) {
               ) : selectedUser ? (
                 <>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="font-semibold">{selectedUser.name}</div>
+                    <div className="font-semibold">{selectedUser.name || '이름 없음'}</div>
                     <div className="text-xs text-gray-500">
                       가입일 {selectedUser.signupAt ? new Date(selectedUser.signupAt).toLocaleDateString('ko-KR') : '-'}
                     </div>
                   </div>
                   <div className="text-sm text-gray-600 mb-3">
-                    {selectedUser.email} · {selectedUser.phone}
+                    {selectedUser.email || '-'} · {selectedUser.phoneNumber || '-'}
                   </div>
 
                   <div className="space-y-2 text-sm">
-                    <div>회원 그룹: <b>{selectedUser.adminFlag}</b> (1=어드민, 0=일반)</div>
                     <div>서비스 구매일(최신): <b>
                       {selectedUser.latestPurchaseAt ? new Date(selectedUser.latestPurchaseAt).toLocaleDateString('ko-KR') : '-'}
                     </b></div>
                     <div>구매 상품명(최신): <b>{selectedUser.latestProductName || '-'}</b></div>
-                    <div>총 구매금액: <b>{selectedUser.totalAmount ? `${selectedUser.totalAmount.toLocaleString()}원` : '-'}</b> · 구매횟수: <b>{selectedUser.purchaseCount || 0}</b></div>
-                    <div>LINE ID: <b>{selectedUser.lineId || '-'}</b> · KAKAO ID: <b>{selectedUser.kakaoId || '-'}</b></div>
-                    <div>사용자 레벨: <b>Lv{selectedUser.userLevel}</b></div>
-                    <div>자녀: <b>{selectedUser.child ? `Lv${selectedUser.child.level} / ${selectedUser.child.name}` : "-"}</b></div>
+                    <div>구매횟수: <b>{selectedUser.purchaseCount || 0}</b></div>
+                    <div>소셜 ID: <b>{selectedUser.socialId || '-'}</b></div>
+                    <div>사용자 레벨: <b>Lv{selectedUser.userLevel ?? 0}</b></div>
+                    <div>자녀: <b>{selectedUser.childLevel && selectedUser.childName ? `Lv${selectedUser.childLevel} / ${selectedUser.childName}` : "-"}</b></div>
                   </div>
 
                   {/* 상품별 이용권 리스트 */}
@@ -571,8 +570,8 @@ export default function AllUsers({ selectedChannel }) {
                           <label className="text-xs text-gray-500">연락처</label>
                           <input 
                             className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.phone} 
-                            onChange={(e) => setUserEdit(p => ({ ...p, phone: e.target.value }))} 
+                            value={userEdit.phoneNumber} 
+                            onChange={(e) => setUserEdit(p => ({ ...p, phoneNumber: e.target.value }))} 
                           />
                         </div>
                         <div>
@@ -592,10 +591,10 @@ export default function AllUsers({ selectedChannel }) {
                           <label className="text-xs text-gray-500">자녀 레벨</label>
                           <select 
                             className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.child.level} 
+                            value={userEdit.childLevel} 
                             onChange={(e) => setUserEdit(p => ({ 
                               ...p, 
-                              child: { ...p.child, level: Number(e.target.value) } 
+                              childLevel: Number(e.target.value) 
                             }))}
                           >
                             <option value={0}>Lv0</option>
@@ -608,10 +607,10 @@ export default function AllUsers({ selectedChannel }) {
                           <label className="text-xs text-gray-500">자녀 이름</label>
                           <input 
                             className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.child.name} 
+                            value={userEdit.childName} 
                             onChange={(e) => setUserEdit(p => ({ 
                               ...p, 
-                              child: { ...p.child, name: e.target.value } 
+                              childName: e.target.value 
                             }))} 
                           />
                         </div>
