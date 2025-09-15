@@ -55,6 +55,7 @@ export const userService = {
 
   /**
    * 사용자 정보 수정
+   * @param {number} channelId - 채널 ID
    * @param {number} userId - 사용자 ID
    * @param {Object} userData - 수정할 사용자 데이터
    * @param {string} userData.phoneNumber - 연락처
@@ -63,8 +64,8 @@ export const userService = {
    * @param {string} userData.childName - 자녀 이름
    * @returns {Promise} API 응답 - ApiResponse<any> 구조
    */
-  async updateUser(userId, userData) {
-    const response = await api.put(`/v1/users/${userId}`, userData);
+  async updateUser(channelId, userId, userData) {
+    const response = await api.put(`/v1/channels/${channelId}/users/${userId}`, userData);
     
     // ApiResponse<T> 구조 처리
     if (response.data.message === 'Success') {
@@ -77,6 +78,7 @@ export const userService = {
 
   /**
    * 사용자 이용권 목록 전체 수정
+   * @param {number} channelId - 채널 ID
    * @param {number} userId - 사용자 ID
    * @param {Array} entitlements - 이용권 목록
    * @param {string} entitlements[].id - 이용권 ID (선택사항, 신규 생성시 제외)
@@ -86,8 +88,8 @@ export const userService = {
    * @param {string} entitlements[].status - 상태 (active, inactive, expired)
    * @returns {Promise} API 응답 - ApiResponse<any> 구조
    */
-  async updateUserEntitlements(userId, entitlements) {
-    const response = await api.put(`/v1/users/${userId}/entitlements`, {
+  async updateUserEntitlements(channelId, userId, entitlements) {
+    const response = await api.put(`/v1/channels/${channelId}/users/${userId}/entitlements`, {
       entitlements
     });
     
@@ -102,12 +104,13 @@ export const userService = {
 
   /**
    * 사용자 이용권 삭제
+   * @param {number} channelId - 채널 ID
    * @param {number} userId - 사용자 ID
    * @param {string} entitlementId - 이용권 ID
    * @returns {Promise} API 응답 - ApiResponse<any> 구조
    */
-  async deleteUserEntitlement(userId, entitlementId) {
-    const response = await api.delete(`/v1/users/${userId}/entitlements/${entitlementId}`);
+  async deleteUserEntitlement(channelId, userId, entitlementId) {
+    const response = await api.delete(`/v1/channels/${channelId}/users/${userId}/entitlements/${entitlementId}`);
     
     // ApiResponse<T> 구조 처리
     if (response.data.message === 'Success') {

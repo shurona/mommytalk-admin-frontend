@@ -15,6 +15,10 @@ import ServiceGroups from "./pages/ServiceGroups";
 import OrderList from "./pages/OrderList";
 import OrderManagement from "./pages/OrderManagement";
 import PurchaseEventSettings from "./pages/PurchaseEventSettings";
+import LineLoginTest from "./pages/LineLoginTest";
+import LineOAuth from "./pages/LineOAuth";
+import LineSDKTest from "./pages/LineSDKTest";
+import LineServerCallback from "./pages/LineServerCallback";
 
 function AdminApp() {
   const [channels, setChannels] = useState([]);
@@ -28,18 +32,34 @@ function AdminApp() {
         setLoadingChannels(true);
         const channelList = await channelService.getChannels();
         setChannels(channelList);
-        
+
         // 첫 번째 채널을 기본 선택
         if (channelList && channelList.length > 0) {
           setSelectedChannel(channelList[0]);
         }
       } catch (error) {
         console.error('Failed to load channels:', error);
+
+        // 임시 mock 데이터로 대체
+        const mockChannels = [
+          {
+            channelId: 'KOR',
+            name: '마미톡잉글리시 KOR',
+            description: '한국 채널'
+          },
+          {
+            channelId: 'JP',
+            name: '마미톡잉글리시 JP',
+            description: '일본 채널'
+          }
+        ];
+        setChannels(mockChannels);
+        setSelectedChannel(mockChannels[0]);
       } finally {
         setLoadingChannels(false);
       }
     };
-    
+
     loadChannels();
   }, []);
 
@@ -69,12 +89,38 @@ function AdminApp() {
             <Route path="/content-list" element={<ContentList />} />
             <Route path="/content-group-settings" element={<ContentGroupSettings />} />
             <Route path="/prompt-management" element={<PromptManagement />} />
-            <Route path="/all-users" element={<AllUsers selectedChannel={selectedChannel} />} />
+            <Route path="/all-users" element={
+              loadingChannels ? (
+                <div className="p-6">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
+                  <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+                    <p className="text-gray-500">채널 정보를 불러오는 중...</p>
+                  </div>
+                </div>
+              ) : (
+                <AllUsers selectedChannel={selectedChannel} />
+              )
+            } />
             <Route path="/purchasers" element={<Purchasers />} />
-            <Route path="/service-groups" element={<ServiceGroups selectedChannel={selectedChannel} />} />
+            <Route path="/service-groups" element={
+              loadingChannels ? (
+                <div className="p-6">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
+                  <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+                    <p className="text-gray-500">채널 정보를 불러오는 중...</p>
+                  </div>
+                </div>
+              ) : (
+                <ServiceGroups selectedChannel={selectedChannel} />
+              )
+            } />
             <Route path="/order-list" element={<OrderList />} />
             <Route path="/order-management" element={<OrderManagement />} />
             <Route path="/purchase-event-settings" element={<PurchaseEventSettings />} />
+            <Route path="/line-login-test" element={<LineLoginTest />} />
+            <Route path="/line-oauth" element={<LineOAuth />} />
+            <Route path="/line-sdk-test" element={<LineSDKTest />} />
+            <Route path="/line-server-callback" element={<LineServerCallback />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>

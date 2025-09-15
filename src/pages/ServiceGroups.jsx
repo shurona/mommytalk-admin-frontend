@@ -2,78 +2,21 @@ import React, { useMemo, useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
 import { userGroupService } from "../services/userGroupService.js";
 
-const PRODUCTS = ["마미톡365", "마미톡365+마미보카"];
-const nowStr = () => new Date().toISOString().slice(0, 16).replace("T", " ");
-
-/** 초기 데이터: 상품별 자동 그룹 2종(서비스 이용자/종료자) */
-const initialAutoGroups = [
-  {
-    id: "active_365",
-    product: "마미톡365",
-    title: "서비스 이용자 그룹(마미톡365)",
-    type: "auto-active",
-    createdAt: "2024-03-01",
-    updatedAt: "2024-03-22",
-    members: [
-      { phone: "010-1234-5678", friend: true, registeredAt: "2024-03-22 09:00" },
-      { phone: "010-2222-3333", friend: true, registeredAt: "2024-03-22 09:05" },
-      { phone: "010-9999-0000", friend: false, registeredAt: "2024-03-22 10:10" },
-    ],
-  },
-  {
-    id: "ended_365",
-    product: "마미톡365",
-    title: "종료 이용자 그룹(마미톡365)",
-    type: "auto-ended",
-    createdAt: "2024-03-01",
-    updatedAt: "2024-03-22",
-    members: [{ phone: "010-4444-5555", friend: true, registeredAt: "2024-03-22 00:10" }],
-  },
-  {
-    id: "active_combo",
-    product: "마미톡365+마미보카",
-    title: "서비스 이용자 그룹(365+보카)",
-    type: "auto-active",
-    createdAt: "2024-03-01",
-    updatedAt: "2024-03-22",
-    members: [
-      { phone: "010-7777-8888", friend: true, registeredAt: "2024-03-22 08:50" },
-      { phone: "010-5555-6666", friend: true, registeredAt: "2024-03-22 09:20" },
-    ],
-  },
-  {
-    id: "ended_combo",
-    product: "마미톡365+마미보카",
-    title: "종료 이용자 그룹(365+보카)",
-    type: "auto-ended",
-    createdAt: "2024-03-01",
-    updatedAt: "2024-03-22",
-    members: [{ phone: "010-1212-3434", friend: true, registeredAt: "2024-03-22 00:10" }],
-  },
-];
-
-/** 커스텀 그룹은 상품과 독립적으로 존재 (product 없음) */
-const initialCustomGroups = [
-  {
-    id: "custom_001",
-    title: "리텐션 캠페인 A",
-    type: "custom",
-    createdAt: "2024-03-10",
-    updatedAt: "2024-03-20",
-    members: [{ phone: "010-3333-4444", friend: true, registeredAt: "2024-03-20 11:00" }],
-  },
-];
-
 export default function ServiceGroups({ selectedChannel }) {
   const [autoGroups, setAutoGroups] = useState([]);
   const [customGroups, setCustomGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
   const [view, setView] = useState({ mode: "list", id: null });
   const [newTitle, setNewTitle] = useState("");
-  const [addPhone, setAddPhone] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  // 모달 상태
+  const [showAddUsersModal, setShowAddUsersModal] = useState(false);
+  const [phoneNumbers, setPhoneNumbers] = useState("");
+  const [addingUsers, setAddingUsers] = useState(false);
 
   // 그룹 목록 로드
   const loadUserGroups = async () => {
@@ -85,8 +28,8 @@ export default function ServiceGroups({ selectedChannel }) {
       const groups = await userGroupService.getUserGroups(selectedChannel.channelId);
       
       // 자동 그룹과 커스텀 그룹 분리
-      const autoGroupsList = groups.filter(g => g.type === 'auto-active' || g.type === 'auto-ended');
-      const customGroupsList = groups.filter(g => g.type === 'custom');
+      const autoGroupsList = groups.filter(g => g.type === 'AUTO_ACTIVE' || g.type === 'AUTO_ENDED');
+      const customGroupsList = groups.filter(g => g.type === 'CUSTOM');
       
       setAutoGroups(autoGroupsList);
       setCustomGroups(customGroupsList);
@@ -118,8 +61,8 @@ export default function ServiceGroups({ selectedChannel }) {
         map[g.product] = { active: [], ended: [] };
       }
       
-      if (g.type === "auto-active") map[g.product].active.push(g);
-      else if (g.type === "auto-ended") map[g.product].ended.push(g);
+      if (g.type === "AUTO_ACTIVE") map[g.product].active.push(g);
+      else if (g.type === "AUTO_ENDED") map[g.product].ended.push(g);
     });
     
     return map;
@@ -136,7 +79,7 @@ export default function ServiceGroups({ selectedChannel }) {
     await loadGroupDetail(id);
     
     const g = byId(id);
-    if (g && g.type === "custom") {
+    if (g && g.type === "CUSTOM") {
       setEditTitle(g.title);
       setIsEditingTitle(false);
     } else {
@@ -150,14 +93,16 @@ export default function ServiceGroups({ selectedChannel }) {
   const createCustomGroup = async () => {
     const t = newTitle.trim();
     if (!t || !selectedChannel?.channelId) return;
-    
+
     try {
       const newGroup = await userGroupService.createCustomGroup(selectedChannel.channelId, t);
       setCustomGroups((prev) => [...prev, newGroup]);
-      setNewTitle("");
     } catch (error) {
       console.error('Failed to create custom group:', error);
       alert('커스텀 그룹 생성에 실패했습니다.');
+    } finally {
+      // 성공/실패와 관계없이 input 비우기
+      setNewTitle("");
     }
   };
 
@@ -182,19 +127,44 @@ export default function ServiceGroups({ selectedChannel }) {
     }
   };
 
-  /** 사용자 추가 */
-  const addUserToGroup = async (groupId) => {
-    const phone = addPhone.trim();
-    if (!phone || !selectedChannel?.channelId) return;
-    
+
+  /** 다중 사용자 추가 */
+  const addMultipleUsersToGroup = async (groupId) => {
+    const phones = phoneNumbers.trim();
+    if (!phones || !selectedChannel?.channelId) return;
+
+    // 전화번호 목록 파싱 (한 줄에 하나씩)
+    const phoneList = phones
+      .split('\n')
+      .map(phone => phone.trim())
+      .filter(phone => phone.length > 0);
+
+    if (phoneList.length === 0) {
+      alert('유효한 전화번호를 입력해주세요.');
+      return;
+    }
+
+    setAddingUsers(true);
+
     try {
-      await userGroupService.addUserToGroup(selectedChannel.channelId, groupId, phone);
+      // List 형식으로 한 번에 전달
+      await userGroupService.addUsersToGroup(selectedChannel.channelId, groupId, phoneList);
+
+      // 성공 알림
+      alert(`${phoneList.length}명의 사용자가 성공적으로 추가되었습니다.`);
+
       // 그룹 상세 정보 다시 로드
       await loadGroupDetail(groupId);
-      setAddPhone("");
+
+      // 모달 닫고 초기화
+      setShowAddUsersModal(false);
+      setPhoneNumbers("");
+
     } catch (error) {
-      console.error('Failed to add user to group:', error);
+      console.error('Failed to add multiple users:', error);
       alert('사용자 추가에 실패했습니다.');
+    } finally {
+      setAddingUsers(false);
     }
   };
 
@@ -233,6 +203,18 @@ export default function ServiceGroups({ selectedChannel }) {
 
   /** 리스트 화면 */
   if (view.mode === "list") {
+    // 채널이 선택되지 않은 경우
+    if (!selectedChannel) {
+      return (
+        <div className="p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800">채널을 선택해주세요.</p>
+          </div>
+        </div>
+      );
+    }
+
     if (loading) {
       return (
         <div className="p-6">
@@ -418,7 +400,7 @@ export default function ServiceGroups({ selectedChannel }) {
   const detail = groupDetail || g;
 
   const TitleBlock = () => {
-    if (g.type !== "custom") {
+    if (g.type !== "CUSTOM") {
       return (
         <>
           <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
@@ -466,13 +448,7 @@ export default function ServiceGroups({ selectedChannel }) {
         </div>
         {/* 그룹에 사용자 추가 (우측 상단) */}
         <div className="flex space-x-2">
-          <input
-            className="border rounded px-3 py-2 text-sm"
-            placeholder="전화번호 입력 (예: 010-1234-5678)"
-            value={addPhone}
-            onChange={(e) => setAddPhone(e.target.value)}
-          />
-          <button onClick={() => addUserToGroup(g.id)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
+          <button onClick={() => setShowAddUsersModal(true)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
             그룹에 사용자 추가
           </button>
         </div>
@@ -550,6 +526,58 @@ export default function ServiceGroups({ selectedChannel }) {
       <div className="text-xs text-gray-500 mt-3">
         * 자동 그룹은 백엔드 배치/웹훅 결과를 표시합니다. 재구매 발생 시 종료 그룹에서 자동 제외됩니다. 커스텀 그룹은 상품과 무관하게 운영되며, 제목 수정이 가능합니다.
       </div>
+
+      {/* 다중 사용자 추가 모달 */}
+      {showAddUsersModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full m-4">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">그룹에 사용자 다중 추가</h3>
+                <button
+                  onClick={() => setShowAddUsersModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  전화번호 목록 (한 줄에 하나씩)
+                </label>
+                <textarea
+                  className="w-full border rounded-lg px-3 py-2 text-sm h-40 resize-none"
+                  placeholder="010-1234-5678&#10;010-2345-6789&#10;010-3456-7890"
+                  value={phoneNumbers}
+                  onChange={(e) => setPhoneNumbers(e.target.value)}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  • 한 줄에 하나씩 입력해주세요 (예: 010-2222-3333)
+                  • 각 줄의 앞뒤 공백은 자동으로 제거됩니다
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowAddUsersModal(false)}
+                  className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-50"
+                  disabled={addingUsers}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => addMultipleUsersToGroup(g.id)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  disabled={addingUsers || !phoneNumbers.trim()}
+                >
+                  {addingUsers ? '추가 중...' : '사용자 추가'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

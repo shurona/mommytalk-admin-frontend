@@ -17,7 +17,7 @@ const userGroupService = {
   createCustomGroup: async (channelId, title) => {
     const response = await api.post(`/v1/channels/${channelId}/user-groups`, {
       title,
-      type: 'custom'
+      type: 'CUSTOM'
     });
     return response.data.data;
   },
@@ -30,10 +30,10 @@ const userGroupService = {
     return response.data.data;
   },
 
-  // 그룹에 사용자 추가
-  addUserToGroup: async (channelId, groupId, phoneNumber) => {
+  // 그룹에 사용자 추가 (다중)
+  addUsersToGroup: async (channelId, groupId, phoneNumbers) => {
     const response = await api.post(`/v1/channels/${channelId}/user-groups/${groupId}/members`, {
-      phoneNumber
+      phoneNumbers
     });
     return response.data.data;
   },

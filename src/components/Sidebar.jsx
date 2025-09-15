@@ -44,6 +44,15 @@ export default function Sidebar() {
         { id: "purchase-event-settings", label: "구매 이벤트 수신 설정" },
       ],
     },
+    {
+      id: "test",
+      icon: FileText,
+      label: "테스트",
+      submenu: [
+        { id: "line-login-test", label: "LINE 로그인 (프론트 방식)" },
+        { id: "line-sdk-test", label: "LINE 로그인 (서버 통합)" },
+      ],
+    },
   ];
 
   const isOpen = (item) =>

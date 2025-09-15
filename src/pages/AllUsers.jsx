@@ -135,7 +135,7 @@ export default function AllUsers({ selectedChannel }) {
     
     try {
       setSavingUser(true);
-      await userService.updateUser(userEdit.userId, {
+      await userService.updateUser(selectedChannel.id, userEdit.userId, {
         phoneNumber: userEdit.phoneNumber,
         userLevel: userEdit.userLevel,
         childLevel: userEdit.childLevel,
@@ -207,7 +207,7 @@ export default function AllUsers({ selectedChannel }) {
     
     try {
       setSavingEntitlements(true);
-      await userService.updateUserEntitlements(entitlementEdit.userId, entitlementEdit.entitlements);
+      await userService.updateUserEntitlements(selectedChannel.id, entitlementEdit.userId, entitlementEdit.entitlements);
       
       // 목록 및 상세정보 새로고침
       await loadUsers(currentPage, q);
@@ -230,7 +230,7 @@ export default function AllUsers({ selectedChannel }) {
     if (!confirm('이용권을 삭제하시겠습니까?')) return;
     
     try {
-      await userService.deleteUserEntitlement(selectedUserId, entitlementId);
+      await userService.deleteUserEntitlement(selectedChannel.id, selectedUserId, entitlementId);
       
       // 목록 및 상세정보 새로고침
       await loadUsers(currentPage, q);
