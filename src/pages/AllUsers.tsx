@@ -1,40 +1,92 @@
 import React, { useState, useEffect } from "react";
 import { userService } from '../services/userService';
 import { Trash2, Plus, Edit, X } from 'lucide-react';
+import {
+  ChannelUser,
+  UserDetail,
+  UserSubscription,
+  Channel,
+  PageResponseDto
+} from '../types';
 
-export default function AllUsers({ selectedChannel }) {
-  const [usersData, setUsersData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [pagination, setPagination] = useState({
+interface AllUsersProps {
+  selectedChannel: Channel | null;
+}
+
+interface PaginationState {
+  number: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+interface UserEditState {
+  userId: number;
+  phoneNumber: string;
+  userLevel: number;
+  childLevel: number;
+  childName: string;
+}
+
+interface EntitlementEditState {
+  userId: number;
+  entitlements: {
+    id?: number;
+    productName: string;
+    serviceStart: string;
+    serviceEnd: string;
+    status: string;
+  }[];
+}
+
+interface ErrorAlertProps {
+  message: string;
+  onClose: () => void;
+}
+
+export default function AllUsers({ selectedChannel }: AllUsersProps) {
+  const [usersData, setUsersData] = useState<ChannelUser[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<PaginationState>({
     number: 0,
     totalPages: 0,
     hasPrevious: false,
     hasNext: false
   });
 
-  const [q, setQ] = useState("");
-  const [currentPage, setCurrentPage] = useState(0);
+  const [q, setQ] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(0);
   const pageSize = 50;
 
+  // 상세 정보 관련 상태
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
+
+  // 편집 관련 상태
+  const [userEdit, setUserEdit] = useState<UserEditState | null>(null);
+  const [savingUser, setSavingUser] = useState<boolean>(false);
+  const [entitlementEdit, setEntitlementEdit] = useState<EntitlementEditState | null>(null);
+  const [savingEntitlements, setSavingEntitlements] = useState<boolean>(false);
 
   // API 호출 함수들
-  const loadUsers = async (page = 0, search = '') => {
+  const loadUsers = async (page = 0, search = ''): Promise<void> => {
     if (!selectedChannel?.channelId) {
       setUsersData([]);
       setPagination({ number: 0, totalPages: 0, hasPrevious: false, hasNext: false });
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      const response = await userService.getUsers(selectedChannel.channelId, {
+      const response: PageResponseDto<ChannelUser> = await userService.getUsers(selectedChannel.channelId, {
         page,
         size: pageSize,
         search: search.trim() || undefined
       });
-      
+
       setUsersData(response.content);
       setPagination({
         number: response.number,
@@ -42,7 +94,7 @@ export default function AllUsers({ selectedChannel }) {
         hasPrevious: response.hasPrevious,
         hasNext: response.hasNext
       });
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || '사용자 목록을 불러오는데 실패했습니다.');
       console.error('Failed to load users:', err);
     } finally {
@@ -59,7 +111,7 @@ export default function AllUsers({ selectedChannel }) {
       loadUsers(0, q);
     }
   }, [selectedChannel?.channelId]);
-  
+
   // 페이지 변경 시에만 로드 (채널이 있고, 페이지가 0이 아닌 경우만)
   useEffect(() => {
     if (selectedChannel?.channelId && currentPage > 0) {
@@ -68,7 +120,7 @@ export default function AllUsers({ selectedChannel }) {
   }, [currentPage]);
 
   // 검색어 변경 시 첫 페이지로 이동하여 검색
-  const handleSearch = (searchQuery) => {
+  const handleSearch = (searchQuery: string): void => {
     setQ(searchQuery);
     if (currentPage === 0) {
       // 이미 0페이지면 직접 호출
@@ -80,25 +132,21 @@ export default function AllUsers({ selectedChannel }) {
   };
 
   // 페이지 변경
-  const handlePageChange = (newPage) => {
+  const handlePageChange = (newPage: number): void => {
     if (newPage >= 0 && newPage < pagination.totalPages) {
       setCurrentPage(newPage);
     }
   };
 
-  const [selectedUserId, setSelectedUserId] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-
   // 사용자 상세 정보 로드
-  const loadUserDetail = async (userId) => {
+  const loadUserDetail = async (userId: number): Promise<void> => {
     if (!selectedChannel?.channelId) return;
-    
+
     try {
       setLoadingDetail(true);
       const user = await userService.getUserById(selectedChannel.channelId, userId);
       setSelectedUser(user);
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || '사용자 상세 정보를 불러오는데 실패했습니다.');
       console.error('Failed to load user detail:', err);
     } finally {
@@ -107,7 +155,7 @@ export default function AllUsers({ selectedChannel }) {
   };
 
   // 사용자 선택
-  const handleUserSelect = (userId) => {
+  const handleUserSelect = (userId: number): void => {
     setSelectedUserId(userId);
     if (userId) {
       loadUserDetail(userId);
@@ -117,10 +165,7 @@ export default function AllUsers({ selectedChannel }) {
   };
 
   // 사용자 편집
-  const [userEdit, setUserEdit] = useState(null);
-  const [savingUser, setSavingUser] = useState(false);
-
-  const startUserEdit = (user) => {
+  const startUserEdit = (user: UserDetail): void => {
     setUserEdit({
       userId: user.userId,
       phoneNumber: user.phoneNumber || '',
@@ -130,26 +175,26 @@ export default function AllUsers({ selectedChannel }) {
     });
   };
 
-  const saveUserEdit = async () => {
+  const saveUserEdit = async (): Promise<void> => {
     if (!userEdit) return;
-    
+
     try {
       setSavingUser(true);
-      await userService.updateUser(selectedChannel.id, userEdit.userId, {
+      await userService.updateUser(selectedChannel!.channelId, userEdit.userId, {
         phoneNumber: userEdit.phoneNumber,
         userLevel: userEdit.userLevel,
         childLevel: userEdit.childLevel,
         childName: userEdit.childName
       });
-      
+
       // 목록 및 상세정보 새로고침
       await loadUsers(currentPage, q);
       if (selectedUserId) {
         await loadUserDetail(selectedUserId);
       }
-      
+
       setUserEdit(null);
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || '사용자 정보 수정에 실패했습니다.');
       console.error('Failed to update user:', err);
     } finally {
@@ -158,10 +203,7 @@ export default function AllUsers({ selectedChannel }) {
   };
 
   // 이용권 편집
-  const [entitlementEdit, setEntitlementEdit] = useState(null);
-  const [savingEntitlements, setSavingEntitlements] = useState(false);
-
-  const startEntitlementEdit = (user) => {
+  const startEntitlementEdit = (user: UserDetail): void => {
     setEntitlementEdit({
       userId: user.userId,
       entitlements: (user.entitlements || []).map(ent => ({
@@ -174,17 +216,17 @@ export default function AllUsers({ selectedChannel }) {
     });
   };
 
-  const updateEntitlement = (index, field, value) => {
-    setEntitlementEdit(prev => ({
+  const updateEntitlement = (index: number, field: string, value: string): void => {
+    setEntitlementEdit(prev => prev ? ({
       ...prev,
-      entitlements: prev.entitlements.map((ent, i) => 
+      entitlements: prev.entitlements.map((ent, i) =>
         i === index ? { ...ent, [field]: value } : ent
       )
-    }));
+    }) : null);
   };
 
-  const addEntitlement = () => {
-    setEntitlementEdit(prev => ({
+  const addEntitlement = (): void => {
+    setEntitlementEdit(prev => prev ? ({
       ...prev,
       entitlements: [...prev.entitlements, {
         productName: '',
@@ -192,31 +234,31 @@ export default function AllUsers({ selectedChannel }) {
         serviceEnd: '',
         status: 'active'
       }]
-    }));
+    }) : null);
   };
 
-  const removeEntitlement = (index) => {
-    setEntitlementEdit(prev => ({
+  const removeEntitlement = (index: number): void => {
+    setEntitlementEdit(prev => prev ? ({
       ...prev,
       entitlements: prev.entitlements.filter((_, i) => i !== index)
-    }));
+    }) : null);
   };
 
-  const saveEntitlements = async () => {
+  const saveEntitlements = async (): Promise<void> => {
     if (!entitlementEdit) return;
-    
+
     try {
       setSavingEntitlements(true);
-      await userService.updateUserEntitlements(selectedChannel.id, entitlementEdit.userId, entitlementEdit.entitlements);
-      
+      await userService.updateUserEntitlements(selectedChannel!.channelId, entitlementEdit.userId, entitlementEdit.entitlements);
+
       // 목록 및 상세정보 새로고침
       await loadUsers(currentPage, q);
       if (selectedUserId) {
         await loadUserDetail(selectedUserId);
       }
-      
+
       setEntitlementEdit(null);
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || '이용권 정보 수정에 실패했습니다.');
       console.error('Failed to update entitlements:', err);
     } finally {
@@ -224,27 +266,27 @@ export default function AllUsers({ selectedChannel }) {
     }
   };
 
-  const deleteEntitlement = async (entitlementId) => {
+  const deleteEntitlement = async (entitlementId: number): Promise<void> => {
     if (!selectedUserId || !entitlementId) return;
-    
+
     if (!confirm('이용권을 삭제하시겠습니까?')) return;
-    
+
     try {
-      await userService.deleteUserEntitlement(selectedChannel.id, selectedUserId, entitlementId);
-      
+      await userService.deleteUserEntitlement(selectedChannel!.channelId, selectedUserId, entitlementId);
+
       // 목록 및 상세정보 새로고침
       await loadUsers(currentPage, q);
       if (selectedUserId) {
         await loadUserDetail(selectedUserId);
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || '이용권 삭제에 실패했습니다.');
       console.error('Failed to delete entitlement:', err);
     }
   };
 
   // 에러 표시 컴포넌트
-  const ErrorAlert = ({ message, onClose }) => (
+  const ErrorAlert = ({ message, onClose }: ErrorAlertProps) => (
     <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
       <div className="flex justify-between items-center">
         <p className="text-red-800 text-sm">{message}</p>
@@ -279,6 +321,48 @@ export default function AllUsers({ selectedChannel }) {
       </div>
     </div>
   );
+
+  // 채널이 선택되지 않은 경우
+  if (!selectedChannel) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">채널을 선택해주세요.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 로딩 중
+  if (loading && usersData.length === 0) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
+        <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+          <p className="text-gray-500">사용자 목록을 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 에러 발생
+  if (error) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <p className="text-red-800">{error}</p>
+          <button
+            onClick={() => loadUsers(currentPage, q)}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+          >
+            다시 시도
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -424,7 +508,7 @@ export default function AllUsers({ selectedChannel }) {
                       <span>편집</span>
                     </button>
                   </div>
-                  
+
                   {entitlementEdit?.userId === selectedUserId ? (
                     // 이용권 편집 모드
                     <div className="space-y-3">
@@ -481,7 +565,7 @@ export default function AllUsers({ selectedChannel }) {
                           </div>
                         </div>
                       ))}
-                      
+
                       <div className="flex space-x-2">
                         <button
                           onClick={addEntitlement}
@@ -491,7 +575,7 @@ export default function AllUsers({ selectedChannel }) {
                           <span>이용권 추가</span>
                         </button>
                       </div>
-                      
+
                       <div className="flex space-x-2">
                         <button
                           onClick={saveEntitlements}
@@ -539,7 +623,7 @@ export default function AllUsers({ selectedChannel }) {
                               <td className="px-3 py-2">
                                 {e.id && (
                                   <button
-                                    onClick={() => deleteEntitlement(e.id)}
+                                    onClick={() => deleteEntitlement(e.id!)}
                                     className="text-red-600 hover:text-red-800"
                                     title="삭제"
                                   >
@@ -568,18 +652,18 @@ export default function AllUsers({ selectedChannel }) {
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-xs text-gray-500">연락처</label>
-                          <input 
-                            className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.phoneNumber} 
-                            onChange={(e) => setUserEdit(p => ({ ...p, phoneNumber: e.target.value }))} 
+                          <input
+                            className="w-full border rounded p-2 text-sm"
+                            value={userEdit.phoneNumber}
+                            onChange={(e) => setUserEdit(p => p ? ({ ...p, phoneNumber: e.target.value }) : null)}
                           />
                         </div>
                         <div>
                           <label className="text-xs text-gray-500">사용자 레벨</label>
-                          <select 
-                            className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.userLevel} 
-                            onChange={(e) => setUserEdit(p => ({ ...p, userLevel: Number(e.target.value) }))}
+                          <select
+                            className="w-full border rounded p-2 text-sm"
+                            value={userEdit.userLevel}
+                            onChange={(e) => setUserEdit(p => p ? ({ ...p, userLevel: Number(e.target.value) }) : null)}
                           >
                             <option value={0}>Lv0</option>
                             <option value={1}>Lv1</option>
@@ -589,13 +673,13 @@ export default function AllUsers({ selectedChannel }) {
                         </div>
                         <div>
                           <label className="text-xs text-gray-500">자녀 레벨</label>
-                          <select 
-                            className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.childLevel} 
-                            onChange={(e) => setUserEdit(p => ({ 
-                              ...p, 
-                              childLevel: Number(e.target.value) 
-                            }))}
+                          <select
+                            className="w-full border rounded p-2 text-sm"
+                            value={userEdit.childLevel}
+                            onChange={(e) => setUserEdit(p => p ? ({
+                              ...p,
+                              childLevel: Number(e.target.value)
+                            }) : null)}
                           >
                             <option value={0}>Lv0</option>
                             <option value={1}>Lv1</option>
@@ -605,26 +689,26 @@ export default function AllUsers({ selectedChannel }) {
                         </div>
                         <div>
                           <label className="text-xs text-gray-500">자녀 이름</label>
-                          <input 
-                            className="w-full border rounded p-2 text-sm" 
-                            value={userEdit.childName} 
-                            onChange={(e) => setUserEdit(p => ({ 
-                              ...p, 
-                              childName: e.target.value 
-                            }))} 
+                          <input
+                            className="w-full border rounded p-2 text-sm"
+                            value={userEdit.childName}
+                            onChange={(e) => setUserEdit(p => p ? ({
+                              ...p,
+                              childName: e.target.value
+                            }) : null)}
                           />
                         </div>
                       </div>
                       <div className="flex space-x-2">
-                        <button 
-                          onClick={saveUserEdit} 
+                        <button
+                          onClick={saveUserEdit}
                           disabled={savingUser}
                           className="flex-1 bg-blue-600 text-white py-2 rounded text-sm disabled:opacity-50"
                         >
                           {savingUser ? '저장 중...' : '저장'}
                         </button>
-                        <button 
-                          onClick={() => setUserEdit(null)} 
+                        <button
+                          onClick={() => setUserEdit(null)}
                           className="px-3 bg-gray-100 text-gray-800 rounded text-sm"
                         >
                           취소
@@ -632,8 +716,8 @@ export default function AllUsers({ selectedChannel }) {
                       </div>
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => startUserEdit(selectedUser)} 
+                    <button
+                      onClick={() => startUserEdit(selectedUser)}
                       className="w-full bg-gray-100 text-gray-800 py-2 rounded text-sm"
                     >
                       사용자 정보 편집

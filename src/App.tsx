@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext.jsx";
-import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import { channelService } from "./services/channelService";
+import { Channel } from "./types";
+
+// 페이지 컴포넌트 imports
 import ContentGeneration from "./pages/ContentGeneration";
 import ContentList from "./pages/ContentList";
 import ContentGroupSettings from "./pages/ContentGroupSettings";
@@ -20,14 +23,14 @@ import LineOAuth from "./pages/LineOAuth";
 import LineSDKTest from "./pages/LineSDKTest";
 import LineServerCallback from "./pages/LineServerCallback";
 
-function AdminApp() {
-  const [channels, setChannels] = useState([]);
-  const [selectedChannel, setSelectedChannel] = useState(null);
-  const [loadingChannels, setLoadingChannels] = useState(true);
+function AdminApp(): JSX.Element {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
 
   // 채널 목록 로드
   useEffect(() => {
-    const loadChannels = async () => {
+    const loadChannels = async (): Promise<void> => {
       try {
         setLoadingChannels(true);
         const channelList = await channelService.getChannels();
@@ -41,7 +44,7 @@ function AdminApp() {
         console.error('Failed to load channels:', error);
 
         // 임시 mock 데이터로 대체
-        const mockChannels = [
+        const mockChannels: Channel[] = [
           {
             channelId: 'KOR',
             name: '마미톡잉글리시 KOR',
@@ -63,11 +66,20 @@ function AdminApp() {
     loadChannels();
   }, []);
 
-  const NotFoundPage = () => (
+  const NotFoundPage = (): JSX.Element => (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">페이지 준비중</h1>
       <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
         <p>해당 페이지는 준비중입니다.</p>
+      </div>
+    </div>
+  );
+
+  const LoadingPage = ({ title }: { title: string }): JSX.Element => (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">{title}</h1>
+      <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
+        <p className="text-gray-500">채널 정보를 불러오는 중...</p>
       </div>
     </div>
   );
@@ -77,9 +89,9 @@ function AdminApp() {
       <div className="flex h-screen bg-gray-50">
         <Sidebar />
         <div className="flex-1 overflow-auto">
-          <Topbar 
+          <Topbar
             channels={channels}
-            selectedChannel={selectedChannel} 
+            selectedChannel={selectedChannel}
             setSelectedChannel={setSelectedChannel}
             loadingChannels={loadingChannels}
           />
@@ -89,38 +101,36 @@ function AdminApp() {
             <Route path="/content-list" element={<ContentList />} />
             <Route path="/content-group-settings" element={<ContentGroupSettings />} />
             <Route path="/prompt-management" element={<PromptManagement />} />
+
+            {/* 채널이 필요한 페이지들 */}
             <Route path="/all-users" element={
               loadingChannels ? (
-                <div className="p-6">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
-                  <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
-                    <p className="text-gray-500">채널 정보를 불러오는 중...</p>
-                  </div>
-                </div>
+                <LoadingPage title="👥 전체 회원" />
               ) : (
                 <AllUsers selectedChannel={selectedChannel} />
               )
             } />
-            <Route path="/purchasers" element={<Purchasers />} />
+
             <Route path="/service-groups" element={
               loadingChannels ? (
-                <div className="p-6">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
-                  <div className="bg-white border rounded-lg shadow-sm p-12 text-center">
-                    <p className="text-gray-500">채널 정보를 불러오는 중...</p>
-                  </div>
-                </div>
+                <LoadingPage title="👥 회원 그룹 관리" />
               ) : (
                 <ServiceGroups selectedChannel={selectedChannel} />
               )
             } />
+
+            {/* 나머지 페이지들 */}
+            <Route path="/purchasers" element={<Purchasers />} />
             <Route path="/order-list" element={<OrderList />} />
             <Route path="/order-management" element={<OrderManagement />} />
             <Route path="/purchase-event-settings" element={<PurchaseEventSettings />} />
+
+            {/* LINE 관련 테스트 페이지들 */}
             <Route path="/line-login-test" element={<LineLoginTest />} />
             <Route path="/line-oauth" element={<LineOAuth />} />
             <Route path="/line-sdk-test" element={<LineSDKTest />} />
             <Route path="/line-server-callback" element={<LineServerCallback />} />
+
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>
@@ -129,7 +139,7 @@ function AdminApp() {
   );
 }
 
-export default function App() {
+export default function App(): JSX.Element {
   return (
     <AuthProvider>
       <ProtectedRoute>

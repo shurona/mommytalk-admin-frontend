@@ -1,8 +1,12 @@
-import React from 'react';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import LoginForm from './LoginForm.jsx';
+import React, { ReactNode } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import LoginForm from './LoginForm';
 
-export default function ProtectedRoute({ children }) {
+interface ProtectedRouteProps {
+  children: ReactNode;
+}
+
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, isAdmin } = useAuth();
 
   // 로딩 중일 때
@@ -41,5 +45,5 @@ export default function ProtectedRoute({ children }) {
   }
 
   // 관리자 권한 확인을 만족하면 자식 컴포넌트 렌더링
-  return children;
+  return <>{children}</>;
 }

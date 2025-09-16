@@ -1,20 +1,56 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { authService } from '../services/authService.js';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { authService } from '../services/authService';
+import { User, LoginRequest } from '../types';
 
-const AuthContext = createContext();
+// 인증 상태 타입
+interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
 
-// 인증 상태 액션 타입
+// 인증 액션 타입
+type AuthAction =
+  | { type: 'LOGIN_START' }
+  | { type: 'LOGIN_SUCCESS'; payload: User }
+  | { type: 'LOGIN_FAILURE'; payload: string }
+  | { type: 'LOGOUT' }
+  | { type: 'SET_USER'; payload: User | null }
+  | { type: 'SET_LOADING'; payload: boolean };
+
+// 로그인 결과 타입
+interface LoginResult {
+  success: boolean;
+  error?: string;
+}
+
+// 컨텍스트 값 타입
+interface AuthContextValue extends AuthState {
+  login: (credentials: LoginRequest) => Promise<LoginResult>;
+  logout: () => Promise<void>;
+  isAdmin: () => boolean;
+}
+
+// AuthProvider Props 타입
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+// 인증 상태 액션 타입 상수
 const AUTH_ACTIONS = {
-  LOGIN_START: 'LOGIN_START',
-  LOGIN_SUCCESS: 'LOGIN_SUCCESS',
-  LOGIN_FAILURE: 'LOGIN_FAILURE',
-  LOGOUT: 'LOGOUT',
-  SET_USER: 'SET_USER',
-  SET_LOADING: 'SET_LOADING',
+  LOGIN_START: 'LOGIN_START' as const,
+  LOGIN_SUCCESS: 'LOGIN_SUCCESS' as const,
+  LOGIN_FAILURE: 'LOGIN_FAILURE' as const,
+  LOGOUT: 'LOGOUT' as const,
+  SET_USER: 'SET_USER' as const,
+  SET_LOADING: 'SET_LOADING' as const,
 };
 
 // 초기 상태
-const initialState = {
+const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
   isLoading: true,
@@ -22,7 +58,7 @@ const initialState = {
 };
 
 // 리듀서
-function authReducer(state, action) {
+function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case AUTH_ACTIONS.LOGIN_START:
       return {
@@ -78,7 +114,7 @@ function authReducer(state, action) {
 }
 
 // AuthProvider 컴포넌트
-export function AuthProvider({ children }) {
+export function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
   // 앱 시작 시 토큰 확인 및 사용자 정보 복원
@@ -113,22 +149,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   // 로그인 함수
-  const login = async (credentials) => {
+  const login = async (credentials: LoginRequest): Promise<LoginResult> => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_START });
 
     try {
       const { user } = await authService.login(credentials);
       dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: user });
       return { success: true };
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || '로그인에 실패했습니다.';
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || '로그인에 실패했습니다.';
       dispatch({ type: AUTH_ACTIONS.LOGIN_FAILURE, payload: errorMessage });
       return { success: false, error: errorMessage };
     }
   };
 
   // 로그아웃 함수
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     try {
       await authService.logout();
     } catch (error) {
@@ -139,11 +175,11 @@ export function AuthProvider({ children }) {
   };
 
   // 관리자 권한 확인 (단일 Admin 역할)
-  const isAdmin = () => {
-    return state.user?.role === 'ADMIN' || state.user?.roles?.includes('ADMIN');
+  const isAdmin = (): boolean => {
+    return state.user?.role === 'ADMIN';
   };
 
-  const value = {
+  const value: AuthContextValue = {
     ...state,
     login,
     logout,
@@ -158,7 +194,7 @@ export function AuthProvider({ children }) {
 }
 
 // useAuth 커스텀 훅
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');

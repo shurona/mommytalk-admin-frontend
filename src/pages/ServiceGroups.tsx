@@ -1,36 +1,47 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
-import { userGroupService } from "../services/userGroupService.js";
+import { userGroupService } from "../services/userGroupService";
+import {
+  UserGroup,
+  UserGroupDetail,
+  UserGroupType,
+  GroupViewState,
+  ServiceGroupsProps,
+  GroupMember,
+  ProductAutoGroupMap,
+  Channel,
+  GroupId
+} from "../types";
 
-export default function ServiceGroups({ selectedChannel }) {
-  const [autoGroups, setAutoGroups] = useState([]);
-  const [customGroups, setCustomGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
+  const [autoGroups, setAutoGroups] = useState<UserGroup[]>([]);
+  const [customGroups, setCustomGroups] = useState<UserGroup[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [view, setView] = useState({ mode: "list", id: null });
-  const [newTitle, setNewTitle] = useState("");
-  const [editTitle, setEditTitle] = useState("");
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [view, setView] = useState<GroupViewState>({ mode: "list", id: null });
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [editTitle, setEditTitle] = useState<string>("");
+  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
 
   // 모달 상태
-  const [showAddUsersModal, setShowAddUsersModal] = useState(false);
-  const [phoneNumbers, setPhoneNumbers] = useState("");
-  const [addingUsers, setAddingUsers] = useState(false);
+  const [showAddUsersModal, setShowAddUsersModal] = useState<boolean>(false);
+  const [phoneNumbers, setPhoneNumbers] = useState<string>("");
+  const [addingUsers, setAddingUsers] = useState<boolean>(false);
 
   // 그룹 목록 로드
-  const loadUserGroups = async () => {
+  const loadUserGroups = async (): Promise<void> => {
     if (!selectedChannel?.channelId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
       const groups = await userGroupService.getUserGroups(selectedChannel.channelId);
-      
+
       // 자동 그룹과 커스텀 그룹 분리
-      const autoGroupsList = groups.filter(g => g.type === 'AUTO_ACTIVE' || g.type === 'AUTO_ENDED');
-      const customGroupsList = groups.filter(g => g.type === 'CUSTOM');
-      
+      const autoGroupsList = groups.filter(g => g.type === UserGroupType.AUTO_ACTIVE || g.type === UserGroupType.AUTO_ENDED);
+      const customGroupsList = groups.filter(g => g.type === UserGroupType.CUSTOM);
+
       setAutoGroups(autoGroupsList);
       setCustomGroups(customGroupsList);
     } catch (error) {
@@ -47,39 +58,39 @@ export default function ServiceGroups({ selectedChannel }) {
   }, [selectedChannel?.channelId]);
 
   const allGroups = useMemo(() => [...autoGroups, ...customGroups], [autoGroups, customGroups]);
-  const byId = (id) => allGroups.find((g) => g.id === id) || null;
+  const byId = (id: GroupId): UserGroup | null => allGroups.find((g) => g.id === id) || null;
 
   /** 상품별 자동 그룹 묶음 (한 화면에 모두 표시) */
-  const productAutoMap = useMemo(() => {
-    const map = {};
-    
+  const productAutoMap = useMemo((): ProductAutoGroupMap => {
+    const map: ProductAutoGroupMap = {};
+
     // 실제 API에서 받은 그룹들의 상품명을 기준으로 맵 생성
     autoGroups.forEach((g) => {
       if (!g.product) return;
-      
+
       if (!map[g.product]) {
         map[g.product] = { active: [], ended: [] };
       }
-      
-      if (g.type === "AUTO_ACTIVE") map[g.product].active.push(g);
-      else if (g.type === "AUTO_ENDED") map[g.product].ended.push(g);
+
+      if (g.type === UserGroupType.AUTO_ACTIVE) map[g.product].active.push(g);
+      else if (g.type === UserGroupType.AUTO_ENDED) map[g.product].ended.push(g);
     });
-    
+
     return map;
   }, [autoGroups]);
 
-  const stats = (g) => {
+  const stats = (g: UserGroup) => {
     const registered = g.memberCount || 0;
     const friendCount = g.friendCount || 0;
     return { registered, friendCount };
   };
 
-  const openDetail = async (id) => {
+  const openDetail = async (id: GroupId): Promise<void> => {
     setView({ mode: "detail", id });
     await loadGroupDetail(id);
-    
+
     const g = byId(id);
-    if (g && g.type === "CUSTOM") {
+    if (g && g.type === UserGroupType.CUSTOM) {
       setEditTitle(g.title);
       setIsEditingTitle(false);
     } else {
@@ -87,10 +98,11 @@ export default function ServiceGroups({ selectedChannel }) {
       setIsEditingTitle(false);
     }
   };
-  const backToList = () => setView({ mode: "list", id: null });
+
+  const backToList = (): void => setView({ mode: "list", id: null });
 
   /** 커스텀 그룹 생성 (상품과 무관) */
-  const createCustomGroup = async () => {
+  const createCustomGroup = async (): Promise<void> => {
     const t = newTitle.trim();
     if (!t || !selectedChannel?.channelId) return;
 
@@ -107,16 +119,16 @@ export default function ServiceGroups({ selectedChannel }) {
   };
 
   /** 공통: 특정 그룹 업데이트 */
-  const updateGroup = (groupId, updater) => {
+  const updateGroup = (groupId: GroupId, updater: (group: UserGroup) => UserGroup): void => {
     setAutoGroups((prev) => prev.map((g) => (g.id === groupId ? updater(g) : g)));
     setCustomGroups((prev) => prev.map((g) => (g.id === groupId ? updater(g) : g)));
   };
 
   /** 커스텀 그룹 제목 저장 */
-  const saveTitle = async (groupId) => {
+  const saveTitle = async (groupId: GroupId): Promise<void> => {
     const t = editTitle.trim();
     if (!t || !selectedChannel?.channelId) return;
-    
+
     try {
       const updatedGroup = await userGroupService.updateGroupTitle(selectedChannel.channelId, groupId, t);
       updateGroup(groupId, () => updatedGroup);
@@ -127,9 +139,8 @@ export default function ServiceGroups({ selectedChannel }) {
     }
   };
 
-
   /** 다중 사용자 추가 */
-  const addMultipleUsersToGroup = async (groupId) => {
+  const addMultipleUsersToGroup = async (groupId: GroupId): Promise<void> => {
     const phones = phoneNumbers.trim();
     if (!phones || !selectedChannel?.channelId) return;
 
@@ -169,9 +180,9 @@ export default function ServiceGroups({ selectedChannel }) {
   };
 
   /** 사용자 제거 */
-  const removeFromGroup = async (groupId, userId) => {
+  const removeFromGroup = async (groupId: GroupId, userId: string): Promise<void> => {
     if (!selectedChannel?.channelId) return;
-    
+
     try {
       await userGroupService.removeUserFromGroup(selectedChannel.channelId, groupId, userId);
       // 그룹 상세 정보 다시 로드
@@ -183,12 +194,12 @@ export default function ServiceGroups({ selectedChannel }) {
   };
 
   /** 그룹 상세 정보 로드 (상세 화면용) */
-  const [groupDetail, setGroupDetail] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [groupDetail, setGroupDetail] = useState<UserGroupDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState<boolean>(false);
 
-  const loadGroupDetail = async (groupId) => {
+  const loadGroupDetail = async (groupId: GroupId): Promise<void> => {
     if (!selectedChannel?.channelId) return;
-    
+
     try {
       setDetailLoading(true);
       const detail = await userGroupService.getUserGroupDetail(selectedChannel.channelId, groupId);
@@ -232,7 +243,7 @@ export default function ServiceGroups({ selectedChannel }) {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 회원 그룹 관리</h1>
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <p className="text-red-800">{error}</p>
-            <button 
+            <button
               onClick={loadUserGroups}
               className="mt-2 px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"
             >
@@ -371,7 +382,7 @@ export default function ServiceGroups({ selectedChannel }) {
   }
 
   /** 상세 화면 */
-  const g = byId(view.id);
+  const g = byId(view.id!);
   if (!g) {
     return (
       <div className="p-6">
@@ -399,8 +410,8 @@ export default function ServiceGroups({ selectedChannel }) {
   const s = stats(g);
   const detail = groupDetail || g;
 
-  const TitleBlock = () => {
-    if (g.type !== "CUSTOM") {
+  const TitleBlock = (): JSX.Element => {
+    if (g.type !== UserGroupType.CUSTOM) {
       return (
         <>
           <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
@@ -493,7 +504,7 @@ export default function ServiceGroups({ selectedChannel }) {
             </tr>
           </thead>
           <tbody>
-            {(detail.members || []).map((m) => (
+            {(detail.members || []).map((m: GroupMember) => (
               <tr key={`${g.id}-${m.userId}-${m.registeredAt}`} className="border-t">
                 <td className="px-4 py-2 text-sm">
                   <input type="checkbox" />
