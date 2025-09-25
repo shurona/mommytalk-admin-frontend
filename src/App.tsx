@@ -99,8 +99,16 @@ function AdminApp(): JSX.Element {
             <Route path="/" element={<Navigate to="/content-generation" replace />} />
             <Route path="/content-generation" element={<ContentGeneration />} />
             <Route path="/content-list" element={<ContentList />} />
-            <Route path="/content-group-settings" element={<ContentGroupSettings />} />
             <Route path="/prompt-management" element={<PromptManagement />} />
+
+            {/* 콘텐츠 발송 설정 - 채널 필요 */}
+            <Route path="/content-group-settings" element={
+              loadingChannels ? (
+                <LoadingPage title="📬 콘텐츠 발송 및 그룹 설정" />
+              ) : (
+                <ContentGroupSettings selectedChannel={selectedChannel} />
+              )
+            } />
 
             {/* 채널이 필요한 페이지들 */}
             <Route path="/all-users" element={

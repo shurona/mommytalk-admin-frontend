@@ -20,7 +20,7 @@ export type DateString = string; // "2024-03-22T09:00:00Z"
 
 // ID 타입들
 export type UserId = string;
-export type GroupId = string;
+export type GroupId = number; // Long 타입 (Java)
 export type ChannelId = string;
 
 // 전화번호 타입
