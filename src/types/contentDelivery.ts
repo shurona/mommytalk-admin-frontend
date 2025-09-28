@@ -70,7 +70,7 @@ export interface MessagesByDateResponse {
 // 발송 가능한 날짜와 메시지 개수 응답
 export interface AvailableDateResponse {
   date: string; // YYYY-MM-DD
-  messageCount: number; // 메시지 개수
+  theme: string; // 메시지 개수
 }
 
 // 콘텐츠 발송 설정 응답

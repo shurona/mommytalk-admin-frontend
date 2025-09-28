@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { contentGenerationService } from "../services/contentGenerationService";
 
 /** 텍스트 스타일 (가독성 위주) */
 const MSG_STYLE = {
@@ -12,12 +13,6 @@ const PRODUCTS = [
   { id: "combo", label: "마미톡 365+마미보카", hasVoca: true },
 ];
 
-/** 8개 조합(아이=1, 엄마=3 제외) */
-const COMBOS_8 = Array.from({ length: 3 }, (_, c) =>
-  Array.from({ length: 3 }, (_, m) => ({ child: c + 1, mom: m + 1 }))
-)
-  .flat()
-  .filter((k) => !(k.child === 1 && k.mom === 3));
 
 const seedText = (c, m) =>
   `Good day! (아이 Lv${c} × 엄마 Lv${m})\n오늘도 우리 아이와 짧게 영어로 이야기해요.`;
@@ -37,7 +32,7 @@ const VOICES = [
   { id: "junko_f", name: "Junko (JP 여성)" },
 ];
 
-export default function ContentGeneration({ country = "KOR" }) {
+export default function ContentGeneration({ country = "KOR", selectedChannel }) {
   const isJP = country === "JPN";
   const audioButtonLabelDefaultMom = isJP ? "ママの発音🔈" : "엄마발음🔈";
   const audioButtonLabelDefaultChild = isJP ? "キッズの発音🔈" : "아이발음🔈";
@@ -47,7 +42,22 @@ export default function ContentGeneration({ country = "KOR" }) {
   const DIARY_DEFAULT_URL = "https://mamitalk.example.com/diary"; // (1) 기본 URL 자동 삽입
 
   const [contentTheme, setContentTheme] = useState("");
-  const [contentDate, setContentDate] = useState("2024-03-22");
+  const [contentContext, setContentContext] = useState("");
+  const [contentDate, setContentDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+  });
+  const [childLevel, setChildLevel] = useState(1);
+  const [momLevel, setMomLevel] = useState(1);
+  const [selectedLanguage, setSelectedLanguage] = useState("KOR");
+
+  /** API 상태 관리 */
+  const [generatedCount, setGeneratedCount] = useState(0);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [currentContent, setCurrentContent] = useState(null);
 
   /** 생성 결과(카드별 본문 메시지) */
   // key: `${productId}|${child}_${mom}`
@@ -62,65 +72,132 @@ export default function ContentGeneration({ country = "KOR" }) {
   const [vocaConfigs, setVocaConfigs] = useState({}); // { key: { label, url, editingLabel } } (보카 상품만)
   const [diaryConfigs, setDiaryConfigs] = useState({}); // { key: { label, url, editingLabel, editingUrl } }
 
-  /** 생성: 2개 상품 × 8조합 → 16카드 */
-  const generate = () => {
-    const msg = {};
-    const tgt = {};
-    const audio = {};
-    const voca = {};
-    const diary = {};
+  // 페이지 로드시 콘텐츠 카운트 조회
+  useEffect(() => {
+    const loadContentCounts = async () => {
+      if (!selectedChannel) return;
 
-    PRODUCTS.forEach((p) => {
-      COMBOS_8.forEach(({ child, mom }) => {
-        const key = `${p.id}|${child}_${mom}`;
-        const base = seedText(child, mom);
-        msg[key] = base;
-        tgt[key] = "전체 사용자";
+      try {
+        const response = await contentGenerationService.getContentsByDate(
+          selectedChannel.channelId,
+          contentDate
+        );
+        setGeneratedCount(response.generatedCount);
+        setApprovedCount(response.approvedCount);
+      } catch (error) {
+        console.error('콘텐츠 카운트 조회 실패:', error);
+        setError(error.response?.data?.message || '콘텐츠 정보를 불러오는데 실패했습니다.');
+      }
+    };
 
-        audio[key] = {
+    loadContentCounts();
+  }, [selectedChannel, contentDate]);
+
+  /** 조회 및 생성: 없으면 생성 */
+  const generateOrRetrieve = async (regenerate = false) => {
+    // 아이=1, 엄마=3 조합 제외 검증
+    if (childLevel === 1 && momLevel === 3) {
+      alert("아이 레벨 1 × 엄마 레벨 3 조합은 지원하지 않습니다.");
+      return;
+    }
+
+    if (!selectedChannel) {
+      alert("채널을 선택해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const request = {
+        theme: contentTheme,
+        context: contentContext,
+        deliveryDate: contentDate,
+        childLevel: childLevel,
+        userLevel: momLevel,
+        language: selectedLanguage,
+        regenerate: regenerate
+      };
+
+      const response = await contentGenerationService.generateContent(
+        selectedChannel.channelId,
+        request
+      );
+
+      const content = response.content;
+      setCurrentContent(content);
+
+      // UI 상태 업데이트
+      const selectedProduct = "365";
+      const selectedProductObj = PRODUCTS.find(p => p.id === selectedProduct);
+      const key = `${selectedProduct}|${childLevel}_${momLevel}`;
+
+      const msg = { [key]: content.messageText };
+      const tgt = { [key]: "전체 사용자" };
+
+      const audio = {
+        [key]: {
           mom: {
-            editableLabel: audioButtonLabelDefaultMom,
+            editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
             editingLabel: false,
             voice: VOICES[0].id,
             speed: 1.0,
-            text: base, // 자동 입력
-            status: "idle", // idle | generating | success
-            url: "",
+            text: content.messageText,
+            status: "idle",
+            url: content.momAudioUrl || "https://cdn.example.com/mock-mom-audio.mp3",
           },
           child: {
-            editableLabel: audioButtonLabelDefaultChild,
+            editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
             editingLabel: false,
             voice: VOICES[2].id,
             speed: 1.0,
-            text: base,
+            text: content.messageText,
             status: "idle",
-            url: "",
+            url: content.childAudioUrl || "https://cdn.example.com/mock-child-audio.mp3",
           },
-        };
-
-        if (p.hasVoca) {
-          voca[key] = {
-            label: vocaDefaultLabel,
-            editingLabel: false,
-            url: "",
-          };
         }
+      };
 
-        diary[key] = {
-          label: diaryDefaultLabel,
-          url: DIARY_DEFAULT_URL, // (1) 기본 URL 주입
+      const voca = {};
+      if (selectedProductObj?.hasVoca && content.vocaUrl) {
+        voca[key] = {
+          label: selectedLanguage === "JPN" ? "デジタルフラッシュカード" : "마미보카📩",
           editingLabel: false,
-          editingUrl: false, // 오른쪽 버튼으로 URL 수정 토글
+          url: content.vocaUrl,
         };
-      });
-    });
+      }
 
-    setMessages(msg);
-    setGroupTargets(tgt);
-    setAudioConfig(audio);
-    setVocaConfigs(voca);
-    setDiaryConfigs(diary);
-    setApprovedKeys(new Set()); // 카운터 리셋
+      const diary = {
+        [key]: {
+          label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+          url: content.diaryUrl || DIARY_DEFAULT_URL,
+          editingLabel: false,
+          editingUrl: false,
+        }
+      };
+
+      setMessages(msg);
+      setGroupTargets(tgt);
+      setAudioConfig(audio);
+      setVocaConfigs(voca);
+      setDiaryConfigs(diary);
+      setApprovedKeys(content.status === 'approved' ? new Set([key]) : new Set());
+
+      // 카운트 다시 조회
+      const countResponse = await contentGenerationService.getContentsByDate(
+        selectedChannel.channelId,
+        contentDate
+      );
+      setGeneratedCount(countResponse.generatedCount);
+      setApprovedCount(countResponse.approvedCount);
+
+    } catch (error) {
+      console.error('콘텐츠 생성/조회 실패:', error);
+      setError(error.response?.data?.message || '콘텐츠 생성에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   /** 업데이트 헬퍼 */
@@ -154,7 +231,8 @@ export default function ContentGeneration({ country = "KOR" }) {
   const generateAudio = (key, role) => {
     updateAudioField(key, role, { status: "generating" });
     setTimeout(() => {
-      const url = `https://cdn.example.com/tts/${encodeURIComponent(key)}-${role}.mp3`;
+      // Mock URL 반환
+      const url = role === "mom" ? "https://cdn.example.com/mock-mom-audio.mp3" : "https://cdn.example.com/mock-child-audio.mp3";
       updateAudioField(key, role, { url, status: "success" });
     }, 900);
   };
@@ -171,15 +249,63 @@ export default function ContentGeneration({ country = "KOR" }) {
     alert("미리보기의 버튼에 오디오 URL이 연결되었습니다.");
   };
 
-  /** 승인/예약 */
-  const approveAndSchedule = (key, title) => {
-    setApprovedKeys((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-    alert(`승인 및 예약 등록 완료: ${title}`);
+  /** 테스트 발송 */
+  const testContent = async (key, title) => {
+    if (!selectedChannel || !currentContent) {
+      alert("콘텐츠를 먼저 생성해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await contentGenerationService.testContent(
+        selectedChannel.channelId,
+        currentContent.id
+      );
+      alert(`테스트 발송 완료: ${title}`);
+    } catch (error) {
+      console.error('테스트 발송 실패:', error);
+      alert(error.response?.data?.message || '테스트 발송에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** 승인 */
+  const approveContent = async (key, title) => {
+    if (!selectedChannel || !currentContent) {
+      alert("콘텐츠를 먼저 생성해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await contentGenerationService.approveContent(
+        selectedChannel.channelId,
+        currentContent.id
+      );
+
+      setApprovedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+
+      // 카운트 다시 조회
+      const countResponse = await contentGenerationService.getContentsByDate(
+        selectedChannel.channelId,
+        contentDate
+      );
+      setGeneratedCount(countResponse.generatedCount);
+      setApprovedCount(countResponse.approvedCount);
+
+      alert(`승인 완료: ${title}`);
+    } catch (error) {
+      console.error('승인 실패:', error);
+      alert(error.response?.data?.message || '승인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   /** 타이틀/정렬용 메타 계산 */
@@ -282,51 +408,127 @@ export default function ContentGeneration({ country = "KOR" }) {
     </div>
   );
 
-  /** 상단 가로형 설정 바 */
+  /** 상단 설정 바 */
   const TopBar = (
-    <div className="bg-white border rounded-xl shadow-sm p-4 mb-4">
-      <div className="grid gap-4 md:grid-cols-12">
-        <div className="md:col-span-6">
-          <label className="block text-[12px] text-slate-600 mb-1 font-medium">주제</label>
-          <input
-            type="text"
-            value={contentTheme}
-            onChange={(e) => setContentTheme(e.target.value)}
-            placeholder="예: 아침 인사, 놀이 시간"
-            className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-          />
+    <div className="bg-white border rounded-xl shadow-sm p-6 mb-4">
+      <div className="flex gap-6">
+        {/* 왼쪽: 주제와 맥락 */}
+        <div className="flex-1">
+          {/* 주제 */}
+          <div className="mb-4">
+            <div className="text-[12px] text-slate-600 mb-1 font-medium">주제</div>
+            <input
+              type="text"
+              value={contentTheme}
+              onChange={(e) => setContentTheme(e.target.value)}
+              placeholder="예: 아침 인사, 놀이 시간"
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            />
+          </div>
+
+          {/* 맥락 */}
+          <div>
+            <div className="text-[12px] text-slate-600 mb-1 font-medium">맥락</div>
+            <textarea
+              rows={5}
+              value={contentContext}
+              onChange={(e) => setContentContext(e.target.value)}
+              placeholder="예: 아이가 일어나서 엄마와 인사하는 상황"
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
+            />
+          </div>
         </div>
-        <div className="md:col-span-3">
-          <label className="block text-[12px] text-slate-600 mb-1 font-medium">발송 날짜</label>
-          <input
-            type="date"
-            value={contentDate}
-            onChange={(e) => setContentDate(e.target.value)}
-            className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-          />
-        </div>
-        <div className="md:col-span-3 flex items-end">
-          <button onClick={generate} className={`${BTN_PRIMARY} w-full`}>
-            AI 콘텐츠 생성하기 (16개)
-          </button>
+
+        {/* 오른쪽: 블록 형태 설정들 */}
+        <div className="flex-1">
+          {/* 첫 번째 행: 발송 날짜 */}
+          <div className="mb-4">
+            <div className="text-[12px] text-slate-600 mb-1 font-medium">발송 날짜</div>
+            <input
+              type="date"
+              value={contentDate}
+              onChange={(e) => setContentDate(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            />
+          </div>
+
+          {/* 두 번째 행: 부모, 아이 */}
+          <div className="flex gap-4 mb-4">
+            <div className="flex-1">
+              <div className="text-[12px] text-slate-600 mb-1 font-medium">부모</div>
+              <select
+                value={momLevel}
+                onChange={(e) => setMomLevel(Number(e.target.value))}
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              >
+                <option value={1}>레벨 1</option>
+                <option value={2}>레벨 2</option>
+                <option value={3}>레벨 3</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <div className="text-[12px] text-slate-600 mb-1 font-medium">아이</div>
+              <select
+                value={childLevel}
+                onChange={(e) => setChildLevel(Number(e.target.value))}
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              >
+                <option value={1}>레벨 1</option>
+                <option value={2}>레벨 2</option>
+                <option value={3}>레벨 3</option>
+              </select>
+            </div>
+          </div>
+
+          {/* 세 번째 행: 언어 */}
+          <div className="mb-4">
+            <div className="text-[12px] text-slate-600 mb-1 font-medium">언어</div>
+            <select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            >
+              <option value="KOR">한국어</option>
+              <option value="JPN">일본어</option>
+            </select>
+          </div>
+
+          {/* 네 번째 행: 생성 버튼들 */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => generateOrRetrieve(false)}
+              className={`${BTN_PRIMARY} flex-1 py-3 text-[14px] font-semibold`}
+              disabled={isLoading}
+            >
+              {isLoading ? "처리중..." : "조회 및 생성"}
+            </button>
+            <button
+              onClick={() => generateOrRetrieve(true)}
+              className={`${BTN_SECONDARY} flex-1 py-3 text-[14px] font-semibold`}
+              disabled={isLoading}
+            >
+              {isLoading ? "처리중..." : "AI 재생성"}
+            </button>
+          </div>
         </div>
       </div>
-      <div className="text-[12px] text-slate-500 mt-2">
-        * 국가 설정은 상단 어드민 탑바 글로벌 옵션을 따릅니다. (현재: <b>{country}</b>)
+
+      <div className="text-[12px] text-slate-500 mt-3">
+        * 국가 설정은 상단 어드민 탑바 글로벌 옵션을 따릅니다. (현재: <b>{selectedLanguage}</b>)
       </div>
     </div>
   );
 
   /** 상단 인디케이터 */
-  const Indicator = messages && (
+  const Indicator = (
     <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
       <div className="bg-white border rounded-xl shadow-sm px-4 py-3">
         <div className="text-[12px] text-slate-500">생성된 콘텐츠</div>
-        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{items.length}</div>
+        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{generatedCount}</div>
       </div>
       <div className="bg-white border rounded-xl shadow-sm px-4 py-3">
-        <div className="text-[12px] text-slate-500">승인·예약된 콘텐츠</div>
-        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{approvedKeys.size}</div>
+        <div className="text-[12px] text-slate-500">승인된 콘텐츠</div>
+        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{approvedCount}</div>
       </div>
     </div>
   );
@@ -336,16 +538,23 @@ export default function ContentGeneration({ country = "KOR" }) {
       <div className="mb-4">
         <h1 className="text-[22px] font-extrabold text-slate-900 tracking-tight">AI 콘텐츠 생성</h1>
         <p className="text-[12px] text-slate-600 mt-1">
-          주제/날짜 설정 후 두 상품(마미톡 365 / 365+보카)의 8개 조합씩 총 16개 카드를 생성·편집하세요.
+          주제/날짜/레벨/언어/상품을 선택하여 1개 콘텐츠를 생성하고 편집해보세요.
         </p>
       </div>
 
       {TopBar}
       {Indicator}
 
+      {/* 에러 메시지 */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+          <div className="text-red-800 text-sm">{error}</div>
+        </div>
+      )}
+
       {!messages ? (
         <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-sm text-slate-600">
-          상단 설정을 입력하고 ‘AI 콘텐츠 생성하기’를 눌러 주세요.
+          상단 설정을 입력하고 '조회 및 생성' 또는 'AI 재생성'을 눌러 주세요.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
@@ -729,44 +938,38 @@ export default function ContentGeneration({ country = "KOR" }) {
                       </div>
                     </section>
 
-                    {/* (D) 발송 그룹 + CTA */}
+                    {/* (D) 액션 버튼 */}
                     <section className="border rounded-lg md:col-span-2">
                       <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
-                        발송 설정
+                        콘텐츠 액션
                       </header>
                       <div className="p-3">
-                        <label className="block text-[12px] text-slate-600 mb-1">발송 그룹 지정</label>
-                        <select
-                          className="w-full border rounded-lg p-2 text-[12px]"
-                          value={groupTargets[key] || "전체 사용자"}
-                          onChange={(e) => updateTarget(key, e.target.value)}
-                        >
-                          <option>전체 사용자</option>
-                          <option>프리미엄 구매자</option>
-                          <option>테스트 그룹</option>
-                        </select>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-3">
                           <button
-                            onClick={() => alert(`[테스트 발송] ${row.title}`)}
+                            onClick={() => testContent(key, row.title)}
                             className={BTN_SECONDARY}
+                            disabled={isLoading}
                           >
                             테스트 발송
                           </button>
 
                           {isApproved ? (
                             <button className={`${BTN_NEUTRAL} cursor-default`} disabled>
-                              예약됨
+                              승인됨 ✓
                             </button>
                           ) : (
                             <button
-                              onClick={() => approveAndSchedule(key, row.title)}
+                              onClick={() => approveContent(key, row.title)}
                               className={BTN_APPROVE}
                               style={{ backgroundColor: "#F65159", borderColor: "#F65159" }}
+                              disabled={isLoading}
                             >
-                              승인 → 예약
+                              승인하기
                             </button>
                           )}
+                        </div>
+                        <div className="text-[12px] text-slate-500 mt-2">
+                          * 그룹 지정 및 발송 예약은 '콘텐츠 발송 및 그룹 설정' 페이지에서 진행합니다.
                         </div>
                       </div>
                     </section>

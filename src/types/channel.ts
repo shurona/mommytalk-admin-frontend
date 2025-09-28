@@ -4,8 +4,8 @@ import { ChannelId } from './common';
 // 채널 정보
 export interface Channel {
   channelId: ChannelId;
-  name: string;
-  description: string;
+  channelName: string; // 서버에서 channelName으로 전달
+  description?: string;
 }
 
 // 채널 목록 응답

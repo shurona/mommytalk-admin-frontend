@@ -6,3 +6,5 @@ export * from './channel';
 export * from './user';
 export * from './userGroup';
 export * from './contentDelivery';
+export * from './contentGeneration';
+export * from './contentList';

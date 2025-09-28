@@ -18,6 +18,11 @@ export default function Topbar({
 }: TopbarProps) {
   const { user, logout } = useAuth();
 
+  // 디버깅용
+  console.log('Topbar - channels:', channels);
+  console.log('Topbar - selectedChannel:', selectedChannel);
+  console.log('Topbar - loadingChannels:', loadingChannels);
+
   const handleLogout = async (): Promise<void> => {
     if (window.confirm('로그아웃 하시겠습니까?')) {
       await logout();
@@ -26,7 +31,11 @@ export default function Topbar({
 
   const handleChannelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const channelId = e.target.value;
-    const channel = channels.find(ch => ch.channelId === channelId) || null;
+    // channelId가 숫자일 수 있으므로 문자열과 숫자 모두 비교
+    const channel = channels.find(ch =>
+      ch.channelId.toString() === channelId || ch.channelId === channelId
+    ) || null;
+    console.log('handleChannelChange - selected:', channelId, 'found:', channel);
     setSelectedChannel(channel);
   };
 
@@ -46,7 +55,7 @@ export default function Topbar({
             >
               {channels.map((channel) => (
                 <option key={channel.channelId} value={channel.channelId}>
-                  📺 {channel.name}
+                  📺 {channel.channelName}
                 </option>
               ))}
               {!channels.length && (

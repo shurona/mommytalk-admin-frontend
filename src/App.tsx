@@ -38,6 +38,7 @@ function AdminApp(): JSX.Element {
 
         // 첫 번째 채널을 기본 선택
         if (channelList && channelList.length > 0) {
+          console.log('Auto-selecting first channel:', channelList[0]);
           setSelectedChannel(channelList[0]);
         }
       } catch (error) {
@@ -47,12 +48,12 @@ function AdminApp(): JSX.Element {
         const mockChannels: Channel[] = [
           {
             channelId: 'KOR',
-            name: '마미톡잉글리시 KOR',
+            channelName: '마미톡잉글리시 KOR',
             description: '한국 채널'
           },
           {
             channelId: 'JP',
-            name: '마미톡잉글리시 JP',
+            channelName: '마미톡잉글리시 JP',
             description: '일본 채널'
           }
         ];
@@ -97,8 +98,20 @@ function AdminApp(): JSX.Element {
           />
           <Routes>
             <Route path="/" element={<Navigate to="/content-generation" replace />} />
-            <Route path="/content-generation" element={<ContentGeneration />} />
-            <Route path="/content-list" element={<ContentList />} />
+            <Route path="/content-generation" element={
+              loadingChannels ? (
+                <LoadingPage title="🤖 AI 콘텐츠 생성" />
+              ) : (
+                <ContentGeneration selectedChannel={selectedChannel} />
+              )
+            } />
+            <Route path="/content-list" element={
+              loadingChannels ? (
+                <LoadingPage title="📋 콘텐츠 목록" />
+              ) : (
+                <ContentList selectedChannel={selectedChannel} />
+              )
+            } />
             <Route path="/prompt-management" element={<PromptManagement />} />
 
             {/* 콘텐츠 발송 설정 - 채널 필요 */}

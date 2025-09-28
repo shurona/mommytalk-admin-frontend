@@ -227,12 +227,12 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
 
 {(() => {
               const selectedDateInfo = availableDates.find(d => d.date === deliveryDate);
-              const messageCount = selectedDateInfo?.messageCount || 0;
+              const messageTheme = selectedDateInfo?.theme || "주제가 없습니다.";
 
-              return messageCount > 0 ? (
+              return messageTheme != null ? (
                 <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                   <p className="text-sm text-gray-600">
-                    선택된 날짜에 <strong>{messageCount}개</strong>의 메시지가 있습니다.
+                    선택된 날짜의 주제는  <strong>{messageTheme}</strong> 입니다.
                   </p>
                 </div>
               ) : null;
