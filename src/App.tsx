@@ -38,7 +38,6 @@ function AdminApp(): JSX.Element {
 
         // 첫 번째 채널을 기본 선택
         if (channelList && channelList.length > 0) {
-          console.log('Auto-selecting first channel:', channelList[0]);
           setSelectedChannel(channelList[0]);
         }
       } catch (error) {

@@ -28,7 +28,7 @@ export interface GeneratedContent {
   updatedAt: string;
 }
 
-export interface ContentListResponse {
+export interface ContentCountResponse {
   generatedCount: number;
   approvedCount: number;
 }

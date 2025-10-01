@@ -8,3 +8,4 @@ export * from './userGroup';
 export * from './contentDelivery';
 export * from './contentGeneration';
 export * from './contentList';
+export * from './messageType';

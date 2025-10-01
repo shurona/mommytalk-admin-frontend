@@ -33,14 +33,14 @@ export enum MessageLogStatus {
 export interface ContentDeliveryRequest {
   deliveryDate: string; // YYYY-MM-DD format
   deliveryTime: string; // ZonedDateTime으로 변환됨 (2024-03-22T09:00:00+09:00[Asia/Seoul])
-  messageTarget: 'all' | 'groups';
+  messageTarget: 'all' | 'group';
   includeGroup: GroupId[]; // 포함할 그룹 ID들 (Long 배열)
   excludeGroup: GroupId[]; // 제외할 그룹 ID들 (Long 배열)
 }
 
 // 메시지 타겟 설정
 export interface MessageTargetConfig {
-  type: 'all' | 'groups';
+  type: 'all' | 'group';
   includedGroups: UserGroup[];
   excludedGroups: UserGroup[];
 }
@@ -70,7 +70,8 @@ export interface MessagesByDateResponse {
 // 발송 가능한 날짜와 메시지 개수 응답
 export interface AvailableDateResponse {
   date: string; // YYYY-MM-DD
-  theme: string; // 메시지 개수
+  messageCount: number; // 메시지 개수
+  theme?: string; // 주제 (optional)
 }
 
 // 콘텐츠 발송 설정 응답

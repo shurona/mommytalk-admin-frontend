@@ -21,7 +21,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   const [deliveryDate, setDeliveryDate] = useState<string>("");
   const [deliveryHour, setDeliveryHour] = useState<string>("09");
   const [deliveryMinute, setDeliveryMinute] = useState<string>("00");
-  const [messageTarget, setMessageTarget] = useState<'all' | 'groups'>('all');
+  const [messageTarget, setMessageTarget] = useState<'all' | 'group'>('all');
   const [includedGroupIds, setIncludedGroupIds] = useState<GroupId[]>([]);
   const [excludedGroupIds, setExcludedGroupIds] = useState<GroupId[]>([]);
 
@@ -112,7 +112,15 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   const calculateEstimatedRecipients = (): number => {
     if (messageTarget === 'all') {
       const allGroup = userGroups.find(g => g.type === UserGroupType.AUTO_ACTIVE);
-      return allGroup?.friendCount || 0;
+      const totalCount = allGroup?.friendCount || 0;
+
+      // 전체 발송에서도 제외할 그룹 차감
+      const excludedCount = excludedGroupIds.reduce((sum, id) => {
+        const group = userGroups.find(g => g.id === id);
+        return sum + (group?.friendCount || 0);
+      }, 0);
+
+      return Math.max(0, totalCount - excludedCount);
     }
 
     const includedCount = includedGroupIds.reduce((sum, id) => {
@@ -137,7 +145,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
       const request = {
         deliveryDate,
         deliveryTime: `${deliveryHour}:${deliveryMinute}`,
-        messageTarget: messageTarget === 'all' ? 'ALL' : 'GROUP',
+        messageTarget: messageTarget as 'all' | 'group',
         includeGroup: includedGroupIds,
         excludeGroup: excludedGroupIds
       };
@@ -298,7 +306,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                 name="messageTarget"
                 value="all"
                 checked={messageTarget === 'all'}
-                onChange={(e) => setMessageTarget(e.target.value as 'all' | 'groups')}
+                onChange={(e) => setMessageTarget(e.target.value as 'all' | 'group')}
                 className="w-4 h-4 text-blue-600"
               />
               <span className="text-sm font-medium">전체 친구 발송</span>
@@ -308,17 +316,51 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
               <input
                 type="radio"
                 name="messageTarget"
-                value="groups"
-                checked={messageTarget === 'groups'}
-                onChange={(e) => setMessageTarget(e.target.value as 'all' | 'groups')}
+                value="group"
+                checked={messageTarget === 'group'}
+                onChange={(e) => setMessageTarget(e.target.value as 'all' | 'group')}
                 className="w-4 h-4 text-blue-600"
               />
               <span className="text-sm font-medium">포함할 친구 그룹</span>
             </label>
           </div>
 
+          {/* 전체 친구 발송시 제외 그룹 */}
+          {messageTarget === 'all' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">제외할 친구 그룹 ({excludedGroupIds.length})</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
+                  {groupOptions.length === 0 ? (
+                    <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
+                  ) : (
+                    groupOptions
+                      .filter(option => option.canExclude)
+                      .map(option => (
+                        <label key={`exclude-all-${option.group.id}`} className="flex items-center space-x-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={excludedGroupIds.includes(option.group.id)}
+                            onChange={(e) => handleExcludeGroupChange(option.group.id, e.target.checked)}
+                            className="w-3 h-3 text-red-600"
+                          />
+                          <span className="flex-1">
+                            {option.group.title}
+                            <span className="text-gray-400 ml-1">({option.friendCount})</span>
+                          </span>
+                        </label>
+                      ))
+                  )}
+                  {groupOptions.length > 0 && groupOptions.filter(option => option.canExclude).length === 0 && (
+                    <p className="text-xs text-gray-500 p-2">제외 가능한 그룹이 없습니다.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 그룹별 타겟팅 */}
-          {messageTarget === 'groups' && (
+          {messageTarget === 'group' && (
             <div className="grid grid-cols-2 gap-4">
               {/* 포함할 그룹 */}
               <div>
@@ -398,6 +440,8 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
       <div className="mt-6 flex justify-end">
         {(() => {
           const selectedDateInfo = availableDates.find(d => d.date === deliveryDate);
+
+        
           const messageCount = selectedDateInfo?.messageCount || 0;
           const isDisabled = loading || !deliveryDate || messageCount === 0;
 

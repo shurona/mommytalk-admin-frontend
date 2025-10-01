@@ -3,7 +3,7 @@ import type {
   ApiResponse,
   ContentGenerationRequest,
   ContentGenerationResponse,
-  ContentListResponse,
+  ContentCountResponse,
   ContentUpdateRequest,
   ContentTestRequest,
   ContentApprovalRequest,
@@ -11,9 +11,9 @@ import type {
 } from '../types';
 
 export const contentGenerationService = {
-  // 특정 날짜의 콘텐츠 목록 조회
-  getContentsByDate: async (channelId: string, date: string): Promise<ContentListResponse> => {
-    const response = await api.get<ApiResponse<ContentListResponse>>(
+  // 특정 날짜의 콘텐츠 카운트 조회
+  getContentsByDate: async (channelId: string, date: string): Promise<ContentCountResponse> => {
+    const response = await api.get<ApiResponse<ContentCountResponse>>(
       `/v1/channels/${channelId}/contents/status?date=${date}`
     );
     return response.data.data;

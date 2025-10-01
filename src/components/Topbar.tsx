@@ -18,10 +18,6 @@ export default function Topbar({
 }: TopbarProps) {
   const { user, logout } = useAuth();
 
-  // 디버깅용
-  console.log('Topbar - channels:', channels);
-  console.log('Topbar - selectedChannel:', selectedChannel);
-  console.log('Topbar - loadingChannels:', loadingChannels);
 
   const handleLogout = async (): Promise<void> => {
     if (window.confirm('로그아웃 하시겠습니까?')) {
@@ -35,7 +31,6 @@ export default function Topbar({
     const channel = channels.find(ch =>
       ch.channelId.toString() === channelId || ch.channelId === channelId
     ) || null;
-    console.log('handleChannelChange - selected:', channelId, 'found:', channel);
     setSelectedChannel(channel);
   };
 

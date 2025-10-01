@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { contentGenerationService } from "../services/contentGenerationService";
+import { messageTypeService } from "../services/messageTypeService";
 
 /** 텍스트 스타일 (가독성 위주) */
 const MSG_STYLE = {
@@ -59,6 +60,11 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   const [error, setError] = useState("");
   const [currentContent, setCurrentContent] = useState(null);
 
+  /** MessageType 상태 관리 */
+  const [messageTypeExists, setMessageTypeExists] = useState(false);
+  const [messageTypeLoading, setMessageTypeLoading] = useState(true);
+  const [editingMessageType, setEditingMessageType] = useState(false);
+
   /** 생성 결과(카드별 본문 메시지) */
   // key: `${productId}|${child}_${mom}`
   const [messages, setMessages] = useState(null);
@@ -72,25 +78,52 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   const [vocaConfigs, setVocaConfigs] = useState({}); // { key: { label, url, editingLabel } } (보카 상품만)
   const [diaryConfigs, setDiaryConfigs] = useState({}); // { key: { label, url, editingLabel, editingUrl } }
 
-  // 페이지 로드시 콘텐츠 카운트 조회
-  useEffect(() => {
-    const loadContentCounts = async () => {
-      if (!selectedChannel) return;
+  // MessageType 조회 함수
+  const loadMessageType = async (channelId, date) => {
+    try {
+      setMessageTypeLoading(true);
+      const messageType = await messageTypeService.getMessageType(channelId, date);
 
-      try {
-        const response = await contentGenerationService.getContentsByDate(
-          selectedChannel.channelId,
-          contentDate
-        );
-        setGeneratedCount(response.generatedCount);
-        setApprovedCount(response.approvedCount);
-      } catch (error) {
-        console.error('콘텐츠 카운트 조회 실패:', error);
-        setError(error.response?.data?.message || '콘텐츠 정보를 불러오는데 실패했습니다.');
+      if (messageType) {
+        setContentTheme(messageType.theme);
+        setContentContext(messageType.context);
+        setMessageTypeExists(true);
+      } else {
+        setContentTheme("");
+        setContentContext("");
+        setMessageTypeExists(false);
       }
+    } catch (error) {
+      console.error('MessageType 조회 실패:', error);
+      setError(error.response?.data?.message || 'MessageType 정보를 불러오는데 실패했습니다.');
+      setMessageTypeExists(false);
+    } finally {
+      setMessageTypeLoading(false);
+    }
+  };
+
+  // 콘텐츠 카운트 조회 함수
+  const loadContentCounts = async (channelId, date) => {
+    try {
+      const response = await contentGenerationService.getContentsByDate(channelId, date);
+      setGeneratedCount(response.generatedCount);
+      setApprovedCount(response.approvedCount);
+    } catch (error) {
+      console.error('콘텐츠 카운트 조회 실패:', error);
+      setError(error.response?.data?.message || '콘텐츠 정보를 불러오는데 실패했습니다.');
+    }
+  };
+
+  // 페이지 로드시 MessageType 및 콘텐츠 카운트 조회
+  useEffect(() => {
+    if (!selectedChannel) return;
+
+    const loadInitialData = async () => {
+      await loadMessageType(selectedChannel.channelId, contentDate);
+      await loadContentCounts(selectedChannel.channelId, contentDate);
     };
 
-    loadContentCounts();
+    loadInitialData();
   }, [selectedChannel, contentDate]);
 
   /** 조회 및 생성: 없으면 생성 */
@@ -185,12 +218,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       setApprovedKeys(content.status === 'approved' ? new Set([key]) : new Set());
 
       // 카운트 다시 조회
-      const countResponse = await contentGenerationService.getContentsByDate(
-        selectedChannel.channelId,
-        contentDate
-      );
-      setGeneratedCount(countResponse.generatedCount);
-      setApprovedCount(countResponse.approvedCount);
+      await loadContentCounts(selectedChannel.channelId, contentDate);
 
     } catch (error) {
       console.error('콘텐츠 생성/조회 실패:', error);
@@ -292,12 +320,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       });
 
       // 카운트 다시 조회
-      const countResponse = await contentGenerationService.getContentsByDate(
-        selectedChannel.channelId,
-        contentDate
-      );
-      setGeneratedCount(countResponse.generatedCount);
-      setApprovedCount(countResponse.approvedCount);
+      await loadContentCounts(selectedChannel.channelId, contentDate);
 
       alert(`승인 완료: ${title}`);
     } catch (error) {
@@ -306,6 +329,68 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /** MessageType 저장/수정 */
+  const saveMessageType = async () => {
+    if (!selectedChannel) {
+      alert("채널을 선택해주세요.");
+      return;
+    }
+
+    if (!contentTheme.trim() || !contentContext.trim()) {
+      alert("주제와 맥락을 모두 입력해주세요.");
+      return;
+    }
+
+    // 승인된 콘텐츠가 있고 기존 MessageType을 수정하는 경우 경고
+    if (messageTypeExists && approvedCount > 0) {
+      const confirmed = window.confirm(
+        `승인된 콘텐츠가 ${approvedCount}개 있습니다.\n주제/맥락을 수정하면 해당 날짜의 모든 메시지 승인이 취소됩니다.\n계속하시겠습니까?`
+      );
+      if (!confirmed) return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const request = {
+        localDate: contentDate,
+        theme: contentTheme.trim(),
+        context: contentContext.trim()
+      };
+
+      const wasUpdating = messageTypeExists; // 수정인지 생성인지 기록
+
+      if (messageTypeExists) {
+        // 수정
+        await messageTypeService.updateMessageType(selectedChannel.channelId, request);
+        alert("주제/맥락이 수정되었습니다.");
+      } else {
+        // 생성
+        await messageTypeService.createMessageType(selectedChannel.channelId, request);
+        setMessageTypeExists(true);
+        alert("주제/맥락이 저장되었습니다.");
+      }
+
+      // 수정의 경우 카운트 다시 조회 (승인 취소로 인한 변경 반영)
+      if (wasUpdating) {
+        await loadContentCounts(selectedChannel.channelId, contentDate);
+      }
+    } catch (error) {
+      console.error('MessageType 저장 실패:', error);
+      setError(error.response?.data?.message || 'MessageType 저장에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** 수정 취소 */
+  const cancelEditMessageType = () => {
+    setEditingMessageType(false);
+    // 원래 값으로 복원
+    loadMessageType(selectedChannel.channelId, contentDate);
   };
 
   /** 타이틀/정렬용 메타 계산 */
@@ -414,29 +499,76 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       <div className="flex gap-6">
         {/* 왼쪽: 주제와 맥락 */}
         <div className="flex-1">
-          {/* 주제 */}
-          <div className="mb-4">
-            <div className="text-[12px] text-slate-600 mb-1 font-medium">주제</div>
-            <input
-              type="text"
-              value={contentTheme}
-              onChange={(e) => setContentTheme(e.target.value)}
-              placeholder="예: 아침 인사, 놀이 시간"
-              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-            />
-          </div>
+          {messageTypeLoading ? (
+            <div className="p-8 text-center text-gray-500">
+              MessageType 정보를 불러오는 중...
+            </div>
+          ) : (
+            <>
+              {/* 주제 */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[12px] text-slate-600 font-medium">주제</div>
+                  {messageTypeExists && (
+                    <button
+                      onClick={() => setEditingMessageType(true)}
+                      className="text-[12px] text-blue-600 hover:underline"
+                    >
+                      수정
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={contentTheme}
+                  onChange={(e) => setContentTheme(e.target.value)}
+                  placeholder="예: 아침 인사, 놀이 시간"
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
 
-          {/* 맥락 */}
-          <div>
-            <div className="text-[12px] text-slate-600 mb-1 font-medium">맥락</div>
-            <textarea
-              rows={5}
-              value={contentContext}
-              onChange={(e) => setContentContext(e.target.value)}
-              placeholder="예: 아이가 일어나서 엄마와 인사하는 상황"
-              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
-            />
-          </div>
+              {/* 맥락 */}
+              <div className="mb-4">
+                <div className="text-[12px] text-slate-600 mb-1 font-medium">맥락</div>
+                <textarea
+                  rows={5}
+                  value={contentContext}
+                  onChange={(e) => setContentContext(e.target.value)}
+                  placeholder="예: 아이가 일어나서 엄마와 인사하는 상황"
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
+                />
+              </div>
+
+              {/* MessageType 액션 버튼 */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={saveMessageType}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-[12px]"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "처리 중..." : messageTypeExists ? "수정" : "저장"}
+                </button>
+                {editingMessageType && (
+                  <button
+                    onClick={cancelEditMessageType}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-[12px]"
+                    disabled={isLoading}
+                  >
+                    취소
+                  </button>
+                )}
+              </div>
+
+              {/* MessageType 상태 안내 */}
+              {!messageTypeExists && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-[12px] text-yellow-800">
+                    💡 해당 날짜의 MessageType이 없습니다. 주제와 맥락을 입력한 후 "저장" 버튼을 눌러주세요.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* 오른쪽: 블록 형태 설정들 */}
