@@ -20,9 +20,9 @@ export interface UserGroup {
   friendCount: number;
 }
 
-// 그룹 상세 정보 (멤버 포함)
+// 그룹 상세 정보 (멤버 제외)
 export interface UserGroupDetail extends UserGroup {
-  members: GroupMember[];
+  // members는 별도 API로 조회
 }
 
 // 그룹 멤버 정보
@@ -32,6 +32,14 @@ export interface GroupMember {
   name?: string;
   isFriend: boolean;
   registeredAt: DateString;
+}
+
+// 그룹 멤버 목록 필터
+export interface GroupMemberFilter {
+  page?: number;
+  size?: number;
+  search?: string;        // 전화번호/이름 검색
+  isFriend?: boolean;     // 친구 여부 필터
 }
 
 // 그룹 생성 요청

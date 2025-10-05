@@ -34,13 +34,16 @@ export interface ContentCountResponse {
 }
 
 export interface ContentUpdateRequest {
-  messageText?: string;
-  vocaUrl?: string;
-  diaryUrl?: string;
+  messageTypeId: number;
+  userLevel: number; // 1-3
+  childLevel: number; // 1-3
+  content: string; // 메시지 내용
+  // 추후 추가 예정: diary, momAudioUrl, childAudioUrl 등
 }
 
 export interface ContentTestRequest {
-  contentId: number;
+  content: string; // 메시지 내용
+  // 추후 추가 예정: diary, momAudioUrl, childAudioUrl 등
 }
 
 export interface ContentApprovalRequest {

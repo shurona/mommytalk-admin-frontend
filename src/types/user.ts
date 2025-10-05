@@ -16,25 +16,36 @@ export interface ChannelUser {
   phoneNumber: PhoneNumber;
   name?: string;
   email?: string;
-  registeredAt: DateString;
+  signupAt?: DateString;
+  registeredAt?: DateString;
   lastLoginAt?: DateString;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  latestPurchaseAt?: DateString;
+  latestProductName?: string;
+  socialId?: string;
+  userLevel?: number;
+  childLevel?: number;
+  childName?: string;
+  purchaseCount?: number;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 }
 
 // 사용자 상세 정보
 export interface UserDetail extends ChannelUser {
-  subscriptions: UserSubscription[];
-  groups: string[]; // 속해있는 그룹 ID들
+  entitlements?: UserSubscription[];
+  subscriptions?: UserSubscription[];
+  groups?: string[]; // 속해있는 그룹 ID들
 }
 
 // 사용자 이용권 정보
 export interface UserSubscription {
-  id: string;
+  id?: number;
   productName: string;
-  startDate: DateString;
-  endDate: DateString;
-  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
-  autoRenewal: boolean;
+  serviceStart: string;
+  serviceEnd: string;
+  startDate?: DateString;
+  endDate?: DateString;
+  status: string;
+  autoRenewal?: boolean;
 }
 
 // 사용자 목록 필터

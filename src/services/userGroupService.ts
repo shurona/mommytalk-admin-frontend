@@ -11,7 +11,9 @@ import {
   UserId,
   PhoneNumber,
   ApiResponse,
-  PageResponseDto
+  PageResponseDto,
+  GroupMember,
+  GroupMemberFilter
 } from '../types';
 
 const userGroupService = {
@@ -28,7 +30,7 @@ const userGroupService = {
   },
 
   /**
-   * 사용자 그룹 상세 조회 (멤버 포함)
+   * 사용자 그룹 상세 조회 (멤버 제외)
    * @param {ChannelId} channelId - 채널 ID
    * @param {GroupId} groupId - 그룹 ID
    * @returns {Promise<UserGroupDetail>} 그룹 상세 정보
@@ -36,6 +38,38 @@ const userGroupService = {
   getUserGroupDetail: async (channelId: ChannelId, groupId: GroupId): Promise<UserGroupDetail> => {
     const response = await api.get<ApiResponse<UserGroupDetail>>(
       `/v1/channels/${channelId}/user-groups/${groupId}`
+    );
+    return response.data.data;
+  },
+
+  /**
+   * 그룹 멤버 목록 페이징 조회
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {GroupId} groupId - 그룹 ID
+   * @param {GroupMemberFilter} params - 필터 파라미터
+   * @returns {Promise<PageResponseDto<GroupMember>>} 페이징된 멤버 목록
+   */
+  getGroupMembers: async (
+    channelId: ChannelId,
+    groupId: GroupId,
+    params: GroupMemberFilter = {}
+  ): Promise<PageResponseDto<GroupMember>> => {
+    const { page = 0, size = 20, search, isFriend } = params;
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    if (search && search.trim()) {
+      queryParams.append('search', search.trim());
+    }
+
+    if (isFriend !== undefined) {
+      queryParams.append('isFriend', isFriend.toString());
+    }
+
+    const response = await api.get<ApiResponse<PageResponseDto<GroupMember>>>(
+      `/v1/channels/${channelId}/user-groups/${groupId}/members?${queryParams}`
     );
     return response.data.data;
   },

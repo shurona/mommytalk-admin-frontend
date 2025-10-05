@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { contentListService } from "../services/contentListService";
 import type {
   ContentItem,
@@ -15,6 +16,7 @@ interface ContentListProps {
 }
 
 export default function ContentList({ selectedChannel }: ContentListProps) {
+  const navigate = useNavigate();
   const [contentList, setContentList] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
@@ -217,8 +219,13 @@ export default function ContentList({ selectedChannel }: ContentListProps) {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {/* 액션 버튼들은 추후 구현 */}
-                        <span className="text-gray-400">-</span>
+                        <button
+                          onClick={() => navigate(`/content-detail/${item.id}`)}
+                          className="flex items-center px-3 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          상세보기
+                        </button>
                       </td>
                     </tr>
                   ))

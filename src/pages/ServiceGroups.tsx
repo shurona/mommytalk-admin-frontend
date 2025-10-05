@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
 import { userGroupService } from "../services/userGroupService";
 import {
@@ -9,7 +9,6 @@ import {
   ServiceGroupsProps,
   GroupMember,
   ProductAutoGroupMap,
-  Channel,
   GroupId
 } from "../types";
 
@@ -164,8 +163,12 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
       // 성공 알림
       alert(`${phoneList.length}명의 사용자가 성공적으로 추가되었습니다.`);
 
-      // 그룹 상세 정보 다시 로드
-      await loadGroupDetail(groupId);
+      // 멤버 목록 첫 페이지로 다시 로드 (새로 추가된 사용자 확인)
+      await loadGroupMembers(groupId, 0, memberSearch, memberPageSize);
+      setMemberPage(0); // 페이지 상태도 0으로 초기화
+      // 그룹 기본 정보도 업데이트 (멤버 수 갱신)
+      const detail = await userGroupService.getUserGroupDetail(selectedChannel.channelId, groupId);
+      setGroupDetail(detail);
 
       // 모달 닫고 초기화
       setShowAddUsersModal(false);
@@ -180,13 +183,18 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   };
 
   /** 사용자 제거 */
-  const removeFromGroup = async (groupId: GroupId, userId: string): Promise<void> => {
+  const removeFromGroup = async (groupId: GroupId, userId: number): Promise<void> => {
     if (!selectedChannel?.channelId) return;
 
     try {
       await userGroupService.removeUserFromGroup(selectedChannel.channelId, groupId, userId);
-      // 그룹 상세 정보 다시 로드
-      await loadGroupDetail(groupId);
+
+      // 그룹 기본 정보 업데이트 (멤버 수 갱신)
+      const detail = await userGroupService.getUserGroupDetail(selectedChannel.channelId, groupId);
+      setGroupDetail(detail);
+
+      // 삭제 후 첫 페이지로 이동 (가장 안전한 방법)
+      await loadGroupMembers(groupId, 0, memberSearch, memberPageSize);
     } catch (error) {
       console.error('Failed to remove user from group:', error);
       alert('사용자 제거에 실패했습니다.');
@@ -197,6 +205,14 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   const [groupDetail, setGroupDetail] = useState<UserGroupDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
 
+  // 멤버 페이징 상태
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [memberPage, setMemberPage] = useState<number>(0);
+  const [memberTotalPages, setMemberTotalPages] = useState<number>(0);
+  const [memberPageSize, setMemberPageSize] = useState<number>(20);
+  const [memberSearch, setMemberSearch] = useState<string>("");
+  const [memberLoading, setMemberLoading] = useState<boolean>(false);
+
   const loadGroupDetail = async (groupId: GroupId): Promise<void> => {
     if (!selectedChannel?.channelId) return;
 
@@ -204,11 +220,37 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
       setDetailLoading(true);
       const detail = await userGroupService.getUserGroupDetail(selectedChannel.channelId, groupId);
       setGroupDetail(detail);
+
+      // 멤버 목록도 함께 로드
+      await loadGroupMembers(groupId, 0, "");
     } catch (error) {
       console.error('Failed to load group detail:', error);
       setError('그룹 상세 정보를 불러오는데 실패했습니다.');
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const loadGroupMembers = async (groupId: GroupId, page = 0, search = "", size = memberPageSize): Promise<void> => {
+    if (!selectedChannel?.channelId) return;
+
+    try {
+      setMemberLoading(true);
+      const response = await userGroupService.getGroupMembers(selectedChannel.channelId, groupId, {
+        page,
+        size,
+        search: search.trim() || undefined
+      });
+
+      console.log('loadGroupMembers response:', response); // 디버그 로그
+      setMembers(response.content);
+      setMemberPage(response.page);
+      setMemberTotalPages(response.totalPages);
+    } catch (error) {
+      console.error('Failed to load group members:', error);
+      setError('멤버 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setMemberLoading(false);
     }
   };
 
@@ -408,7 +450,28 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   }
 
   const s = stats(g);
-  const detail = groupDetail || g;
+
+  // 멤버 페이지 변경 핸들러
+  const handleMemberPageChange = (newPage: number): void => {
+    if (newPage >= 0 && newPage < memberTotalPages) {
+      setMemberPage(newPage);
+      loadGroupMembers(g.id, newPage, memberSearch, memberPageSize);
+    }
+  };
+
+  // 멤버 검색 핸들러
+  const handleMemberSearch = (search: string): void => {
+    setMemberSearch(search);
+    setMemberPage(0);
+    loadGroupMembers(g.id, 0, search, memberPageSize);
+  };
+
+  // 페이지 사이즈 변경 핸들러
+  const handlePageSizeChange = (size: number): void => {
+    setMemberPageSize(size);
+    setMemberPage(0);
+    loadGroupMembers(g.id, 0, memberSearch, size);
+  };
 
   const TitleBlock = (): JSX.Element => {
     if (g.type !== UserGroupType.CUSTOM) {
@@ -491,6 +554,31 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
         </div>
       </div>
 
+      {/* 멤버 검색 및 필터 */}
+      <div className="bg-white border rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex items-center space-x-3">
+          <input
+            className="flex-1 border rounded px-3 py-2 text-sm"
+            placeholder="전화번호 또는 이름으로 검색"
+            value={memberSearch}
+            onChange={(e) => handleMemberSearch(e.target.value)}
+          />
+          <div className="flex items-center space-x-2">
+            <label className="text-sm text-gray-600">페이지당</label>
+            <select
+              className="border rounded px-3 py-2 text-sm"
+              value={memberPageSize}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            >
+              <option value={10}>10개</option>
+              <option value={20}>20개</option>
+              <option value={50}>50개</option>
+              <option value={100}>100개</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* 멤버 테이블 */}
       <div className="bg-white border rounded-lg shadow-sm overflow-x-auto">
         <table className="w-full min-w-[700px]">
@@ -504,34 +592,84 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
             </tr>
           </thead>
           <tbody>
-            {(detail.members || []).map((m: GroupMember) => (
-              <tr key={`${g.id}-${m.userId}-${m.registeredAt}`} className="border-t">
-                <td className="px-4 py-2 text-sm">
-                  <input type="checkbox" />
-                </td>
-                <td className="px-4 py-2 text-sm">{m.phoneNumber}</td>
-                <td className="px-4 py-2 text-xs">
-                  <span className={`px-2 py-1 rounded-full ${m.isFriend ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}`}>
-                    {m.isFriend ? "친구" : "미친구(보류)"}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-sm whitespace-nowrap">{new Date(m.registeredAt).toLocaleString()}</td>
-                <td className="px-4 py-2 text-sm">
-                  <button onClick={() => removeFromGroup(g.id, m.userId)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
-                    제거
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {(!detail.members || detail.members.length === 0) && (
+            {memberLoading ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
-                  아직 등록된 사용자가 없습니다.
+                  멤버 목록을 불러오는 중...
                 </td>
               </tr>
+            ) : members.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                  {memberSearch ? '검색 결과가 없습니다.' : '아직 등록된 사용자가 없습니다.'}
+                </td>
+              </tr>
+            ) : (
+              members.map((m: GroupMember) => (
+                <tr key={`${g.id}-${m.userId}-${m.registeredAt}`} className="border-t">
+                  <td className="px-4 py-2 text-sm">
+                    <input type="checkbox" />
+                  </td>
+                  <td className="px-4 py-2 text-sm">{m.phoneNumber}</td>
+                  <td className="px-4 py-2 text-xs">
+                    <span className={`px-2 py-1 rounded-full ${m.isFriend ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}`}>
+                      {m.isFriend ? "친구" : "미친구(보류)"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-sm whitespace-nowrap">{new Date(m.registeredAt).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-sm">
+                    <button onClick={() => removeFromGroup(g.id, m.userId)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
+                      제거
+                    </button>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
+
+        {/* 페이지네이션 */}
+        {memberTotalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+            <div className="text-sm text-gray-700">
+              페이지 {memberPage + 1} / {memberTotalPages}
+            </div>
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={() => handleMemberPageChange(memberPage - 1)}
+                disabled={memberPage === 0}
+                className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+              >
+                이전
+              </button>
+
+              {Array.from({ length: Math.min(10, memberTotalPages) }, (_, i) => {
+                const startPage = Math.floor(memberPage / 10) * 10;
+                const pageNum = startPage + i;
+                if (pageNum >= memberTotalPages) return null;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handleMemberPageChange(pageNum)}
+                    className={`px-3 py-1 text-sm border rounded hover:bg-gray-100 ${
+                      memberPage === pageNum ? 'bg-blue-500 text-white hover:bg-blue-600' : ''
+                    }`}
+                  >
+                    {pageNum + 1}
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => handleMemberPageChange(memberPage + 1)}
+                disabled={memberPage >= memberTotalPages - 1}
+                className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+              >
+                다음
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="text-xs text-gray-500 mt-3">

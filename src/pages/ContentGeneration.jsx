@@ -54,16 +54,18 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   const [selectedLanguage, setSelectedLanguage] = useState("KOR");
 
   /** API 상태 관리 */
-  const [generatedCount, setGeneratedCount] = useState(0);
-  const [approvedCount, setApprovedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentContent, setCurrentContent] = useState(null);
+
+  /** 9개 레벨별 콘텐츠 생성 상태 */
+  const [levelContentInfo, setLevelContentInfo] = useState({});
 
   /** MessageType 상태 관리 */
   const [messageTypeExists, setMessageTypeExists] = useState(false);
   const [messageTypeLoading, setMessageTypeLoading] = useState(true);
   const [editingMessageType, setEditingMessageType] = useState(false);
+  const [messageTypeId, setMessageTypeId] = useState(null);
 
   /** 생성 결과(카드별 본문 메시지) */
   // key: `${productId}|${child}_${mom}`
@@ -78,62 +80,51 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   const [vocaConfigs, setVocaConfigs] = useState({}); // { key: { label, url, editingLabel } } (보카 상품만)
   const [diaryConfigs, setDiaryConfigs] = useState({}); // { key: { label, url, editingLabel, editingUrl } }
 
-  // MessageType 조회 함수
+  // MessageType 조회 함수 (9개 레벨 contentInfo 포함)
   const loadMessageType = async (channelId, date) => {
     try {
       setMessageTypeLoading(true);
-      const messageType = await messageTypeService.getMessageType(channelId, date);
+      setError(""); // 에러 초기화
 
-      if (messageType) {
-        setContentTheme(messageType.theme);
-        setContentContext(messageType.context);
+      // YYYY-MM-DD -> YYYYMMDD 형식으로 변환
+      const dateInfo = date.replace(/-/g, '');
+
+      const messageTypeInfo = await messageTypeService.getMessageTypeByDate(channelId, dateInfo);
+
+      if (messageTypeInfo) {
+        // 데이터 있음
+        setMessageTypeId(messageTypeInfo.id);
+        setContentTheme(messageTypeInfo.theme);
+        setContentContext(messageTypeInfo.context);
+        setLevelContentInfo(messageTypeInfo.contentInfo || {});
         setMessageTypeExists(true);
       } else {
+        // 데이터 없음 (정상 상황 - 백엔드에서 null 반환)
+        setMessageTypeId(null);
         setContentTheme("");
         setContentContext("");
+        setLevelContentInfo({});
         setMessageTypeExists(false);
       }
     } catch (error) {
+      // 실제 에러만 처리 (네트워크 오류, 500 등)
       console.error('MessageType 조회 실패:', error);
       setError(error.response?.data?.message || 'MessageType 정보를 불러오는데 실패했습니다.');
       setMessageTypeExists(false);
+      setLevelContentInfo({});
     } finally {
       setMessageTypeLoading(false);
     }
   };
 
-  // 콘텐츠 카운트 조회 함수
-  const loadContentCounts = async (channelId, date) => {
-    try {
-      const response = await contentGenerationService.getContentsByDate(channelId, date);
-      setGeneratedCount(response.generatedCount);
-      setApprovedCount(response.approvedCount);
-    } catch (error) {
-      console.error('콘텐츠 카운트 조회 실패:', error);
-      setError(error.response?.data?.message || '콘텐츠 정보를 불러오는데 실패했습니다.');
-    }
-  };
-
-  // 페이지 로드시 MessageType 및 콘텐츠 카운트 조회
+  // 페이지 로드시 MessageType 조회
   useEffect(() => {
     if (!selectedChannel) return;
-
-    const loadInitialData = async () => {
-      await loadMessageType(selectedChannel.channelId, contentDate);
-      await loadContentCounts(selectedChannel.channelId, contentDate);
-    };
-
-    loadInitialData();
+    loadMessageType(selectedChannel.channelId, contentDate);
   }, [selectedChannel, contentDate]);
 
   /** 조회 및 생성: 없으면 생성 */
   const generateOrRetrieve = async (regenerate = false) => {
-    // 아이=1, 엄마=3 조합 제외 검증
-    if (childLevel === 1 && momLevel === 3) {
-      alert("아이 레벨 1 × 엄마 레벨 3 조합은 지원하지 않습니다.");
-      return;
-    }
-
     if (!selectedChannel) {
       alert("채널을 선택해주세요.");
       return;
@@ -217,8 +208,8 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       setDiaryConfigs(diary);
       setApprovedKeys(content.status === 'approved' ? new Set([key]) : new Set());
 
-      // 카운트 다시 조회
-      await loadContentCounts(selectedChannel.channelId, contentDate);
+      // 9개 레벨 상태 다시 조회
+      await loadMessageType(selectedChannel.channelId, contentDate);
 
     } catch (error) {
       console.error('콘텐츠 생성/조회 실패:', error);
@@ -279,21 +270,77 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
 
   /** 테스트 발송 */
   const testContent = async (key, title) => {
-    if (!selectedChannel || !currentContent) {
-      alert("콘텐츠를 먼저 생성해주세요.");
+    if (!selectedChannel) {
+      alert("채널을 선택해주세요.");
+      return;
+    }
+
+    const messageText = messages?.[key];
+    if (!messageText || messageText.trim() === "") {
+      alert("메시지 내용을 입력해주세요.");
       return;
     }
 
     setIsLoading(true);
     try {
+      const request = {
+        content: messageText
+        // 추후 추가: diary, momAudioUrl, childAudioUrl 등
+      };
+
       await contentGenerationService.testContent(
         selectedChannel.channelId,
-        currentContent.id
+        request
       );
       alert(`테스트 발송 완료: ${title}`);
     } catch (error) {
       console.error('테스트 발송 실패:', error);
       alert(error.response?.data?.message || '테스트 발송에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** 수정하기 */
+  const updateContent = async (key, title) => {
+    if (!selectedChannel) {
+      alert("채널을 선택해주세요.");
+      return;
+    }
+
+    if (!messageTypeId) {
+      alert("MessageType 정보가 없습니다. 주제와 맥락을 먼저 저장해주세요.");
+      return;
+    }
+
+    const messageText = messages?.[key];
+    if (!messageText || messageText.trim() === "") {
+      alert("메시지 내용을 입력해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const request = {
+        messageTypeId: messageTypeId,
+        userLevel: momLevel,
+        childLevel: childLevel,
+        content: messageText
+        // 추후 추가: diary, momAudioUrl, childAudioUrl 등
+      };
+
+      await contentGenerationService.updateContent(
+        selectedChannel.channelId,
+        request
+      );
+
+      // 9개 레벨 상태 다시 조회
+      await loadMessageType(selectedChannel.channelId, contentDate);
+
+      alert(`수정 완료: ${title}`);
+    } catch (error) {
+      console.error('수정 실패:', error);
+      alert(error.response?.data?.message || '수정에 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -318,9 +365,6 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         next.add(key);
         return next;
       });
-
-      // 카운트 다시 조회
-      await loadContentCounts(selectedChannel.channelId, contentDate);
 
       alert(`승인 완료: ${title}`);
     } catch (error) {
@@ -365,18 +409,15 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
 
       if (messageTypeExists) {
         // 수정
-        await messageTypeService.updateMessageType(selectedChannel.channelId, request);
+        const response = await messageTypeService.updateMessageType(selectedChannel.channelId, request);
+        setMessageTypeId(response.id); // ID 업데이트
         alert("주제/맥락이 수정되었습니다.");
       } else {
         // 생성
-        await messageTypeService.createMessageType(selectedChannel.channelId, request);
+        const response = await messageTypeService.createMessageType(selectedChannel.channelId, request);
+        setMessageTypeId(response.id); // 생성된 ID 저장
         setMessageTypeExists(true);
         alert("주제/맥락이 저장되었습니다.");
-      }
-
-      // 수정의 경우 카운트 다시 조회 (승인 취소로 인한 변경 반영)
-      if (wasUpdating) {
-        await loadContentCounts(selectedChannel.channelId, contentDate);
       }
     } catch (error) {
       console.error('MessageType 저장 실패:', error);
@@ -653,14 +694,110 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
 
   /** 상단 인디케이터 */
   const Indicator = (
-    <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div className="bg-white border rounded-xl shadow-sm px-4 py-3">
-        <div className="text-[12px] text-slate-500">생성된 콘텐츠</div>
-        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{generatedCount}</div>
-      </div>
-      <div className="bg-white border rounded-xl shadow-sm px-4 py-3">
-        <div className="text-[12px] text-slate-500">승인된 콘텐츠</div>
-        <div className="text-[20px] font-extrabold text-slate-900 mt-0.5">{approvedCount}</div>
+    <div className="mb-6">
+      {/* 레벨별 생성 현황 */}
+      <div className="bg-white border rounded-xl shadow-sm px-6 py-5">
+        <div className="text-[14px] font-semibold text-slate-700 mb-3">레벨별 생성 현황</div>
+        <table className="border-collapse border border-gray-300 w-full max-w-md">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="border border-gray-300 px-3 py-2 text-[12px] font-medium text-gray-600"></th>
+              <th className="border border-gray-300 px-3 py-2 text-[12px] font-medium text-gray-600">자녀1</th>
+              <th className="border border-gray-300 px-3 py-2 text-[12px] font-medium text-gray-600">자녀2</th>
+              <th className="border border-gray-300 px-3 py-2 text-[12px] font-medium text-gray-600">자녀3</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[1, 2, 3].map((userLevel) => (
+              <tr key={userLevel}>
+                <td className="border border-gray-300 px-3 py-2 text-[12px] font-medium text-gray-600 bg-gray-50">
+                  부모{userLevel}
+                </td>
+                  {[1, 2, 3].map((childLv) => {
+                    const levelKey = `${userLevel}_${childLv}`;
+                    const hasContent = levelContentInfo[levelKey] && levelContentInfo[levelKey].trim() !== '';
+                    const isSelected = childLevel === childLv && momLevel === userLevel;
+
+                    return (
+                      <td
+                        key={levelKey}
+                        className="border border-gray-300 p-0"
+                      >
+                        <button
+                          onClick={() => {
+                            setChildLevel(childLv);
+                            setMomLevel(userLevel);
+
+                            const selectedProduct = "365";
+                            const key = `${selectedProduct}|${userLevel}_${childLv}`;
+                            const messageText = hasContent ? levelContentInfo[levelKey] : "";
+
+                            // 메시지 및 UI 상태 설정 (빈 값이어도 표시)
+                            setMessages({ [key]: messageText });
+                            setGroupTargets({ [key]: "전체 사용자" });
+
+                            // 오디오 설정
+                            setAudioConfig({
+                              [key]: {
+                                mom: {
+                                  editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
+                                  editingLabel: false,
+                                  voice: VOICES[0].id,
+                                  speed: 1.0,
+                                  text: messageText,
+                                  status: "idle",
+                                  url: "",
+                                },
+                                child: {
+                                  editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
+                                  editingLabel: false,
+                                  voice: VOICES[2].id,
+                                  speed: 1.0,
+                                  text: messageText,
+                                  status: "idle",
+                                  url: "",
+                                },
+                              }
+                            });
+
+                            // 다이어리 설정
+                            setDiaryConfigs({
+                              [key]: {
+                                label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                url: DIARY_DEFAULT_URL,
+                                editingLabel: false,
+                                editingUrl: false,
+                              }
+                            });
+
+                            setVocaConfigs({});
+                            setApprovedKeys(new Set());
+                          }}
+                          className={`w-full h-full px-3 py-3 text-[13px] font-medium transition-colors ${
+                            isSelected
+                              ? 'bg-blue-500 text-white'
+                              : hasContent
+                              ? 'bg-white text-gray-700 hover:bg-gray-50'
+                              : 'bg-white text-gray-400 hover:bg-gray-50'
+                          }`}
+                          style={{
+                            border: isSelected
+                              ? 'none'
+                              : hasContent
+                              ? '2px solid #22c55e'
+                              : '2px solid #ef4444',
+                            margin: '-1px'
+                          }}
+                        >
+                          {userLevel}×{childLv}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -684,7 +821,12 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         </div>
       )}
 
-      {!messages ? (
+      {/* MessageType이 없으면 콘텐츠 카드 숨기기 */}
+      {!messageTypeExists ? (
+        <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-sm text-slate-600">
+          해당 날짜의 MessageType이 없습니다. 주제와 맥락을 입력한 후 '저장' 버튼을 눌러주세요.
+        </div>
+      ) : !messages ? (
         <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-sm text-slate-600">
           상단 설정을 입력하고 '조회 및 생성' 또는 'AI 재생성'을 눌러 주세요.
         </div>
@@ -1076,7 +1218,15 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                         콘텐츠 액션
                       </header>
                       <div className="p-3">
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            onClick={() => updateContent(key, row.title)}
+                            className={BTN_SECONDARY}
+                            disabled={isLoading}
+                          >
+                            수정하기
+                          </button>
+
                           <button
                             onClick={() => testContent(key, row.title)}
                             className={BTN_SECONDARY}

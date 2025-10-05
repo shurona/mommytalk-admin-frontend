@@ -2,11 +2,12 @@ import api from './api';
 import type {
   ApiResponse,
   MessageTypeResponse,
-  MessageTypeRequest
+  MessageTypeRequest,
+  MessageTypeInfoResponse
 } from '../types';
 
 export const messageTypeService = {
-  // MessageType 조회
+  // MessageType 조회 (기존 - 주제/맥락만)
   getMessageType: async (channelId: string, date: string): Promise<MessageTypeResponse | null> => {
     try {
       const response = await api.get<ApiResponse<MessageTypeResponse>>(
@@ -20,6 +21,16 @@ export const messageTypeService = {
       }
       throw error;
     }
+  },
+
+  // MessageType 날짜별 상세 조회 (9개 레벨 contentInfo 포함)
+  getMessageTypeByDate: async (channelId: string, dateInfo: string): Promise<MessageTypeInfoResponse | null> => {
+    // dateInfo: "20250930" (yyyyMMdd 형식)
+    const response = await api.get<ApiResponse<MessageTypeInfoResponse | null>>(
+      `/v1/channels/${channelId}/messages/types/dates?dateInfo=${dateInfo}`
+    );
+    // 백엔드에서 데이터가 없으면 data: null 반환
+    return response.data.data;
   },
 
   // MessageType 생성

@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { userService } from '../services/userService';
 import { Trash2, Plus, Edit, X } from 'lucide-react';
 import {
   ChannelUser,
   UserDetail,
-  UserSubscription,
   Channel,
   PageResponseDto
 } from '../types';
@@ -57,7 +56,7 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
 
   const [q, setQ] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(0);
-  const pageSize = 50;
+  const pageSize = 20;
 
   // 상세 정보 관련 상태
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -84,15 +83,20 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
       const response: PageResponseDto<ChannelUser> = await userService.getUsers(selectedChannel.channelId, {
         page,
         size: pageSize,
-        search: search.trim() || undefined
+        searchTerm: search.trim() || undefined
       });
 
+      console.log('API Response:', response);
       setUsersData(response.content);
+
+      const currentPage = response.page ?? 0;
+      const total = response.totalPages ?? 1;
+
       setPagination({
-        number: response.number,
-        totalPages: response.totalPages,
-        hasPrevious: response.hasPrevious,
-        hasNext: response.hasNext
+        number: currentPage,
+        totalPages: total,
+        hasPrevious: currentPage > 0,
+        hasNext: currentPage < total - 1
       });
     } catch (err: any) {
       setError(err.response?.data?.message || '사용자 목록을 불러오는데 실패했습니다.');
@@ -170,7 +174,7 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
       userId: user.userId,
       phoneNumber: user.phoneNumber || '',
       userLevel: user.userLevel ?? 1,
-      childLevel: user.childLevel ?? 0,
+      childLevel: user.childLevel ?? 1,
       childName: user.childName || ''
     });
   };
@@ -298,29 +302,48 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
   );
 
   // 페이지네이션 컴포넌트
-  const Pagination = () => (
-    <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-      <div className="text-sm text-gray-700">
-        페이지 {pagination.number + 1} / {pagination.totalPages}
+  const Pagination = () => {
+    const maxPageButtons = 10;
+    const startPage = Math.floor(pagination.number / maxPageButtons) * maxPageButtons;
+    const endPage = Math.min(startPage + maxPageButtons, pagination.totalPages);
+
+    return (
+      <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+        <div className="text-sm text-gray-700">
+          페이지 {pagination.number} / {pagination.totalPages}
+        </div>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => handlePageChange(pagination.number - 1)}
+            disabled={!pagination.hasPrevious}
+            className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+          >
+            이전
+          </button>
+
+          {Array.from({ length: endPage - startPage }, (_, i) => startPage + i).map(pageNum => (
+            <button
+              key={pageNum}
+              onClick={() => handlePageChange(pageNum)}
+              className={`px-3 py-1 text-sm border rounded hover:bg-gray-100 ${
+                pagination.number === pageNum ? 'bg-blue-500 text-white hover:bg-blue-600' : ''
+              }`}
+            >
+              {pageNum + 1}
+            </button>
+          ))}
+
+          <button
+            onClick={() => handlePageChange(pagination.number + 1)}
+            disabled={!pagination.hasNext}
+            className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+          >
+            다음
+          </button>
+        </div>
       </div>
-      <div className="flex space-x-2">
-        <button
-          onClick={() => handlePageChange(pagination.number - 1)}
-          disabled={!pagination.hasPrevious}
-          className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-        >
-          이전
-        </button>
-        <button
-          onClick={() => handlePageChange(pagination.number + 1)}
-          disabled={!pagination.hasNext}
-          className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-        >
-          다음
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // 채널이 선택되지 않은 경우
   if (!selectedChannel) {
@@ -665,7 +688,6 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
                             value={userEdit.userLevel}
                             onChange={(e) => setUserEdit(p => p ? ({ ...p, userLevel: Number(e.target.value) }) : null)}
                           >
-                            <option value={0}>Lv0</option>
                             <option value={1}>Lv1</option>
                             <option value={2}>Lv2</option>
                             <option value={3}>Lv3</option>
@@ -681,7 +703,6 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
                               childLevel: Number(e.target.value)
                             }) : null)}
                           >
-                            <option value={0}>Lv0</option>
                             <option value={1}>Lv1</option>
                             <option value={2}>Lv2</option>
                             <option value={3}>Lv3</option>

@@ -28,19 +28,20 @@ export const contentGenerationService = {
     return response.data.data;
   },
 
-  // 콘텐츠 내용 수정
-  updateContent: async (channelId: string, contentId: number, request: ContentUpdateRequest): Promise<ContentActionResponse> => {
-    const response = await api.put<ApiResponse<ContentActionResponse>>(
-      `/v1/channels/${channelId}/contents/${contentId}`,
+  // 콘텐츠 내용 수정 (upsert)
+  updateContent: async (channelId: string, request: ContentUpdateRequest): Promise<ContentActionResponse> => {
+    const response = await api.post<ApiResponse<ContentActionResponse>>(
+      `/v1/channels/${channelId}/contents`,
       request
     );
     return response.data.data;
   },
 
   // 테스트 발송
-  testContent: async (channelId: string, contentId: number): Promise<ContentActionResponse> => {
+  testContent: async (channelId: string, request: ContentTestRequest): Promise<ContentActionResponse> => {
     const response = await api.post<ApiResponse<ContentActionResponse>>(
-      `/v1/channels/${channelId}/contents/${contentId}/test`
+      `/v1/channels/${channelId}/contents/test`,
+      request
     );
     return response.data.data;
   },

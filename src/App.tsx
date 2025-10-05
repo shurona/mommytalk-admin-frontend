@@ -10,6 +10,7 @@ import { Channel } from "./types";
 // 페이지 컴포넌트 imports
 import ContentGeneration from "./pages/ContentGeneration";
 import ContentList from "./pages/ContentList";
+import ContentDetail from "./pages/ContentDetail";
 import ContentGroupSettings from "./pages/ContentGroupSettings";
 import PromptManagement from "./pages/PromptManagement";
 import AllUsers from "./pages/AllUsers";
@@ -109,6 +110,13 @@ function AdminApp(): JSX.Element {
                 <LoadingPage title="📋 콘텐츠 목록" />
               ) : (
                 <ContentList selectedChannel={selectedChannel} />
+              )
+            } />
+            <Route path="/content-detail/:id" element={
+              loadingChannels ? (
+                <LoadingPage title="📄 콘텐츠 상세" />
+              ) : (
+                <ContentDetail selectedChannel={selectedChannel} />
               )
             } />
             <Route path="/prompt-management" element={<PromptManagement />} />

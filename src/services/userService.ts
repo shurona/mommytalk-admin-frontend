@@ -133,10 +133,10 @@ export const userService = {
    * 사용자 이용권 삭제
    * @param {ChannelId} channelId - 채널 ID
    * @param {UserId} userId - 사용자 ID
-   * @param {string} entitlementId - 이용권 ID
+   * @param {number} entitlementId - 이용권 ID
    * @returns {Promise<any>} 삭제 결과
    */
-  async deleteUserEntitlement(channelId: ChannelId, userId: UserId, entitlementId: string): Promise<any> {
+  async deleteUserEntitlement(channelId: ChannelId, userId: UserId, entitlementId: number): Promise<any> {
     const response = await api.delete<ApiResponse<any>>(
       `/v1/channels/${channelId}/users/${userId}/entitlements/${entitlementId}`
     );
