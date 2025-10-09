@@ -44,9 +44,12 @@ const contentDeliveryService = {
       deliveryDate: request.deliveryDate,
       deliveryTime: zonedDateTime, // ZonedDateTime 형태로 전송
       messageTarget: request.messageTarget,
-      includeGroup: request.includeGroup,
+      includeGroupId: request.includeGroupId,
+      includeCustomGroup: request.includeCustomGroup,
       excludeGroup: request.excludeGroup
     };
+
+    console.log('contentDeliveryService payload:', payload);
 
     try {
       await api.post<ApiResponse<void>>(

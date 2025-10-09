@@ -18,6 +18,11 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 커스텀 그룹 페이징 상태
+  const [customPage, setCustomPage] = useState<number>(0);
+  const [customTotalPages, setCustomTotalPages] = useState<number>(0);
+  const [customPageSize, setCustomPageSize] = useState<number>(50);
+
   const [view, setView] = useState<GroupViewState>({ mode: "list", id: null });
   const [newTitle, setNewTitle] = useState<string>("");
   const [editTitle, setEditTitle] = useState<string>("");
@@ -28,6 +33,34 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   const [phoneNumbers, setPhoneNumbers] = useState<string>("");
   const [addingUsers, setAddingUsers] = useState<boolean>(false);
 
+  // 자동 그룹 로드
+  const loadAutoGroups = async (): Promise<void> => {
+    if (!selectedChannel?.channelId) return;
+
+    try {
+      const groups = await userGroupService.getAutoGroups(selectedChannel.channelId);
+      setAutoGroups(groups);
+    } catch (error) {
+      console.error('Failed to load auto groups:', error);
+      setError('자동 그룹을 불러오는데 실패했습니다.');
+    }
+  };
+
+  // 커스텀 그룹 로드 (페이징)
+  const loadCustomGroups = async (page: number = 0, size: number = customPageSize): Promise<void> => {
+    if (!selectedChannel?.channelId) return;
+
+    try {
+      const response = await userGroupService.getCustomGroups(selectedChannel.channelId, page, size);
+      setCustomGroups(response.content);
+      setCustomPage(response.page);
+      setCustomTotalPages(response.totalPages);
+    } catch (error) {
+      console.error('Failed to load custom groups:', error);
+      setError('커스텀 그룹을 불러오는데 실패했습니다.');
+    }
+  };
+
   // 그룹 목록 로드
   const loadUserGroups = async (): Promise<void> => {
     if (!selectedChannel?.channelId) return;
@@ -35,14 +68,12 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
     try {
       setLoading(true);
       setError(null);
-      const groups = await userGroupService.getUserGroups(selectedChannel.channelId);
 
-      // 자동 그룹과 커스텀 그룹 분리
-      const autoGroupsList = groups.filter(g => g.type === UserGroupType.AUTO_ACTIVE || g.type === UserGroupType.AUTO_ENDED);
-      const customGroupsList = groups.filter(g => g.type === UserGroupType.CUSTOM);
-
-      setAutoGroups(autoGroupsList);
-      setCustomGroups(customGroupsList);
+      // 자동 그룹과 커스텀 그룹 병렬 로드
+      await Promise.all([
+        loadAutoGroups(),
+        loadCustomGroups(0, customPageSize)
+      ]);
     } catch (error) {
       console.error('Failed to load user groups:', error);
       setError('그룹 목록을 불러오는데 실패했습니다.');
@@ -79,9 +110,16 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   }, [autoGroups]);
 
   const stats = (g: UserGroup) => {
-    const registered = g.memberCount || 0;
-    const friendCount = g.friendCount || 0;
+    const registered = g.memberCount ?? 0;
+    const friendCount = g.friendCount ?? 0;
     return { registered, friendCount };
+  };
+
+  // 커스텀 그룹 페이지 변경 핸들러
+  const handleCustomPageChange = (newPage: number): void => {
+    if (newPage >= 0 && newPage < customTotalPages) {
+      loadCustomGroups(newPage, customPageSize);
+    }
   };
 
   const openDetail = async (id: GroupId): Promise<void> => {
@@ -106,14 +144,13 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
     if (!t || !selectedChannel?.channelId) return;
 
     try {
-      const newGroup = await userGroupService.createCustomGroup(selectedChannel.channelId, t);
-      setCustomGroups((prev) => [...prev, newGroup]);
+      await userGroupService.createCustomGroup(selectedChannel.channelId, t);
+      // 커스텀 그룹 목록 첫 페이지로 새로고침
+      await loadCustomGroups(0, customPageSize);
+      setNewTitle("");
     } catch (error) {
       console.error('Failed to create custom group:', error);
       alert('커스텀 그룹 생성에 실패했습니다.');
-    } finally {
-      // 성공/실패와 관계없이 input 비우기
-      setNewTitle("");
     }
   };
 
@@ -418,6 +455,49 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
               <div className="text-xs text-gray-500">등록된 커스텀 그룹이 없습니다.</div>
             )}
           </ul>
+
+          {/* 커스텀 그룹 페이지네이션 */}
+          {customTotalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3 border-t">
+              <div className="text-sm text-gray-700">
+                페이지 {customPage + 1} / {customTotalPages}
+              </div>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => handleCustomPageChange(customPage - 1)}
+                  disabled={customPage === 0}
+                  className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  이전
+                </button>
+
+                {Array.from({ length: Math.min(10, customTotalPages) }, (_, i) => {
+                  const startPage = Math.floor(customPage / 10) * 10;
+                  const pageNum = startPage + i;
+                  if (pageNum >= customTotalPages) return null;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handleCustomPageChange(pageNum)}
+                      className={`px-3 py-1 text-sm border rounded hover:bg-gray-100 ${
+                        customPage === pageNum ? 'bg-blue-500 text-white hover:bg-blue-600' : ''
+                      }`}
+                    >
+                      {pageNum + 1}
+                    </button>
+                  );
+                })}
+
+                <button
+                  onClick={() => handleCustomPageChange(customPage + 1)}
+                  disabled={customPage >= customTotalPages - 1}
+                  className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  다음
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -473,43 +553,43 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
     loadGroupMembers(g.id, 0, memberSearch, size);
   };
 
-  const TitleBlock = (): JSX.Element => {
-    if (g.type !== UserGroupType.CUSTOM) {
-      return (
-        <>
-          <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
-          <span className="ml-3 text-xs text-gray-500">상품: {g.product}</span>
-        </>
-      );
-    }
-    return (
+  // 제목 블록 렌더링 (조건부 렌더링을 위해 변수로 분리)
+  let titleBlock: JSX.Element;
+  if (g.type !== UserGroupType.CUSTOM) {
+    titleBlock = (
       <>
-        {isEditingTitle ? (
-          <div className="flex items-center space-x-2">
-            <input
-              className="border rounded px-3 py-2 text-sm"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-            />
-            <button onClick={() => saveTitle(g.id)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
-              저장
-            </button>
-            <button onClick={() => { setIsEditingTitle(false); setEditTitle(g.title); }} className="px-3 py-2 bg-gray-100 rounded text-sm">
-              취소
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center space-x-2">
-            <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
-            <button onClick={() => setIsEditingTitle(true)} className="px-2 py-1 bg-white border rounded text-xs">
-              제목 편집
-            </button>
-            <span className="ml-2 text-xs text-gray-500">커스텀 그룹</span>
-          </div>
-        )}
+        <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
+        <span className="ml-3 text-xs text-gray-500">상품: {g.product}</span>
       </>
     );
-  };
+  } else if (isEditingTitle) {
+    titleBlock = (
+      <div className="flex items-center space-x-2">
+        <input
+          className="border rounded px-3 py-2 text-sm"
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          autoFocus
+        />
+        <button onClick={() => saveTitle(g.id)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
+          저장
+        </button>
+        <button onClick={() => { setIsEditingTitle(false); setEditTitle(g.title); }} className="px-3 py-2 bg-gray-100 rounded text-sm">
+          취소
+        </button>
+      </div>
+    );
+  } else {
+    titleBlock = (
+      <div className="flex items-center space-x-2">
+        <h1 className="inline text-2xl font-bold text-gray-900">{g.title}</h1>
+        <button onClick={() => setIsEditingTitle(true)} className="px-2 py-1 bg-white border rounded text-xs">
+          제목 편집
+        </button>
+        <span className="ml-2 text-xs text-gray-500">커스텀 그룹</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -518,7 +598,7 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
           <button onClick={backToList} className="mr-2 px-3 py-2 bg-white border rounded text-sm">
             ← 목록으로
           </button>
-          <TitleBlock />
+          {titleBlock}
         </div>
         {/* 그룹에 사용자 추가 (우측 상단) */}
         <div className="flex space-x-2">

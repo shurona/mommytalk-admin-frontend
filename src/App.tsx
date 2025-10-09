@@ -43,22 +43,6 @@ function AdminApp(): JSX.Element {
         }
       } catch (error) {
         console.error('Failed to load channels:', error);
-
-        // 임시 mock 데이터로 대체
-        const mockChannels: Channel[] = [
-          {
-            channelId: 'KOR',
-            channelName: '마미톡잉글리시 KOR',
-            description: '한국 채널'
-          },
-          {
-            channelId: 'JP',
-            channelName: '마미톡잉글리시 JP',
-            description: '일본 채널'
-          }
-        ];
-        setChannels(mockChannels);
-        setSelectedChannel(mockChannels[0]);
       } finally {
         setLoadingChannels(false);
       }
@@ -119,7 +103,13 @@ function AdminApp(): JSX.Element {
                 <ContentDetail selectedChannel={selectedChannel} />
               )
             } />
-            <Route path="/prompt-management" element={<PromptManagement />} />
+            <Route path="/prompt-management" element={
+              loadingChannels ? (
+                <LoadingPage title="🔧 프롬프트 관리" />
+              ) : (
+                <PromptManagement selectedChannel={selectedChannel} />
+              )
+            } />
 
             {/* 콘텐츠 발송 설정 - 채널 필요 */}
             <Route path="/content-group-settings" element={

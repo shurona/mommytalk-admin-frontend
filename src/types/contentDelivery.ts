@@ -34,7 +34,8 @@ export interface ContentDeliveryRequest {
   deliveryDate: string; // YYYY-MM-DD format
   deliveryTime: string; // ZonedDateTime으로 변환됨 (2024-03-22T09:00:00+09:00[Asia/Seoul])
   messageTarget: 'all' | 'group';
-  includeGroup: GroupId[]; // 포함할 그룹 ID들 (Long 배열)
+  includeGroupId: GroupId | null; // 포함할 AUTO_ACTIVE 그룹 ID (단일, nullable)
+  includeCustomGroup: GroupId[]; // 포함할 CUSTOM 그룹 ID들 (배열)
   excludeGroup: GroupId[]; // 제외할 그룹 ID들 (Long 배열)
 }
 

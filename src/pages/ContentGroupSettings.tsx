@@ -41,13 +41,15 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
     setLoading(true);
     try {
       // 병렬로 데이터 로드
-      const [dates, groups] = await Promise.all([
+      const [dates, autoGroups, customGroupsResponse] = await Promise.all([
         contentDeliveryService.getAvailableDeliveryDates(selectedChannel.channelId),
-        userGroupService.getUserGroups(selectedChannel.channelId)
+        userGroupService.getAutoGroups(selectedChannel.channelId),
+        userGroupService.getCustomGroups(selectedChannel.channelId, 0, 100)
       ]);
 
       setAvailableDates(dates);
-      setUserGroups(groups);
+      // 자동 그룹과 커스텀 그룹 합치기
+      setUserGroups([...autoGroups, ...customGroupsResponse.content]);
 
       // 첫 번째 사용 가능한 날짜를 기본 선택
       if (dates.length > 0) {
@@ -92,7 +94,18 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   };
 
   // 그룹 선택 핸들러
-  const handleIncludeGroupChange = (groupId: GroupId, checked: boolean) => {
+  // AUTO_ACTIVE: 라디오 버튼 (단일 선택) - 기존 선택 제거하고 새로 설정
+  const handleAutoActiveGroupChange = (groupId: GroupId) => {
+    // 기존 AUTO_ACTIVE 그룹 제거하고 새로운 그룹만 추가
+    const customGroups = includedGroupIds.filter(id => {
+      const group = userGroups.find(g => g.id === id);
+      return group?.type === UserGroupType.CUSTOM;
+    });
+    setIncludedGroupIds([groupId, ...customGroups]);
+  };
+
+  // CUSTOM: 체크박스 (다중 선택) - 기존 선택 유지
+  const handleCustomGroupChange = (groupId: GroupId, checked: boolean) => {
     if (checked) {
       setIncludedGroupIds(prev => [...prev, groupId]);
     } else {
@@ -108,33 +121,6 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
     }
   };
 
-  // 예상 발송 대상 계산
-  const calculateEstimatedRecipients = (): number => {
-    if (messageTarget === 'all') {
-      const allGroup = userGroups.find(g => g.type === UserGroupType.AUTO_ACTIVE);
-      const totalCount = allGroup?.friendCount || 0;
-
-      // 전체 발송에서도 제외할 그룹 차감
-      const excludedCount = excludedGroupIds.reduce((sum, id) => {
-        const group = userGroups.find(g => g.id === id);
-        return sum + (group?.friendCount || 0);
-      }, 0);
-
-      return Math.max(0, totalCount - excludedCount);
-    }
-
-    const includedCount = includedGroupIds.reduce((sum, id) => {
-      const group = userGroups.find(g => g.id === id);
-      return sum + (group?.friendCount || 0);
-    }, 0);
-
-    const excludedCount = excludedGroupIds.reduce((sum, id) => {
-      const group = userGroups.find(g => g.id === id);
-      return sum + (group?.friendCount || 0);
-    }, 0);
-
-    return Math.max(0, includedCount - excludedCount);
-  };
 
   // 발송 설정 저장
   const handleScheduleDelivery = async () => {
@@ -142,13 +128,36 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
 
     setLoading(true);
     try {
+      console.log('=== 발송 예약 디버깅 ===');
+      console.log('includedGroupIds:', includedGroupIds);
+      console.log('userGroups:', userGroups);
+
+      // AUTO_ACTIVE 그룹 ID 추출 (단일)
+      const autoActiveId = includedGroupIds.find(id => {
+        const group = userGroups.find(g => g.id === id);
+        console.log(`ID ${id} 체크 - 그룹:`, group, '타입:', group?.type);
+        return group?.type === UserGroupType.AUTO_ACTIVE;
+      }) || null;
+
+      // CUSTOM 그룹 ID 추출 (배열)
+      const customIds = includedGroupIds.filter(id => {
+        const group = userGroups.find(g => g.id === id);
+        return group?.type === UserGroupType.CUSTOM;
+      });
+
+      console.log('autoActiveId:', autoActiveId);
+      console.log('customIds:', customIds);
+
       const request = {
         deliveryDate,
         deliveryTime: `${deliveryHour}:${deliveryMinute}`,
         messageTarget: messageTarget as 'all' | 'group',
-        includeGroup: includedGroupIds,
+        includeGroupId: messageTarget === 'all' ? null : autoActiveId,
+        includeCustomGroup: messageTarget === 'all' ? [] : customIds,
         excludeGroup: excludedGroupIds
       };
+
+      console.log('최종 request:', request);
 
       await contentDeliveryService.scheduleContentDelivery(selectedChannel.channelId, request);
 
@@ -185,7 +194,6 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   }
 
   const groupOptions = getGroupOptions();
-  const estimatedRecipients = calculateEstimatedRecipients();
 
   return (
     <div className="p-6">
@@ -329,7 +337,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
           {messageTarget === 'all' && (
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">제외할 친구 그룹 ({excludedGroupIds.length})</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">제외할 친구 그룹</h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
                   {groupOptions.length === 0 ? (
                     <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
@@ -346,7 +354,6 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                           />
                           <span className="flex-1">
                             {option.group.title}
-                            <span className="text-gray-400 ml-1">({option.friendCount})</span>
                           </span>
                         </label>
                       ))
@@ -364,37 +371,58 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
             <div className="grid grid-cols-2 gap-4">
               {/* 포함할 그룹 */}
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">포함할 친구 그룹 ({includedGroupIds.length})</h4>
-                <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">포함할 친구 그룹</h4>
+                <div className="space-y-3 max-h-48 overflow-y-auto border rounded-lg p-2">
                   {groupOptions.length === 0 ? (
                     <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
                   ) : (
-                    groupOptions
-                      .filter(option => option.canInclude)
-                      .map(option => (
-                        <label key={`include-${option.group.id}`} className="flex items-center space-x-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={includedGroupIds.includes(option.group.id)}
-                            onChange={(e) => handleIncludeGroupChange(option.group.id, e.target.checked)}
-                            className="w-3 h-3 text-blue-600"
-                          />
-                          <span className="flex-1">
-                            {option.group.title}
-                            <span className="text-gray-400 ml-1">({option.friendCount})</span>
-                          </span>
-                        </label>
-                      ))
-                  )}
-                  {groupOptions.length > 0 && groupOptions.filter(option => option.canInclude).length === 0 && (
-                    <p className="text-xs text-gray-500 p-2">포함 가능한 그룹이 없습니다.</p>
+                    <>
+                      {/* AUTO_ACTIVE 그룹 - 라디오 버튼 */}
+                      {groupOptions
+                        .filter(option => option.group.type === UserGroupType.AUTO_ACTIVE)
+                        .map(option => (
+                          <label key={`include-auto-${option.group.id}`} className="flex items-center space-x-2 text-xs">
+                            <input
+                              type="radio"
+                              name="autoActiveGroup"
+                              checked={includedGroupIds.includes(option.group.id)}
+                              onChange={() => handleAutoActiveGroupChange(option.group.id)}
+                              className="w-3 h-3 text-blue-600"
+                            />
+                            <span className="flex-1">
+                              {option.group.title}
+                            </span>
+                          </label>
+                        ))}
+
+                      {/* CUSTOM 그룹 - 체크박스 */}
+                      {groupOptions
+                        .filter(option => option.group.type === UserGroupType.CUSTOM)
+                        .map(option => (
+                          <label key={`include-custom-${option.group.id}`} className="flex items-center space-x-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={includedGroupIds.includes(option.group.id)}
+                              onChange={(e) => handleCustomGroupChange(option.group.id, e.target.checked)}
+                              className="w-3 h-3 text-blue-600"
+                            />
+                            <span className="flex-1">
+                              {option.group.title}
+                            </span>
+                          </label>
+                        ))}
+
+                      {groupOptions.filter(option => option.canInclude).length === 0 && (
+                        <p className="text-xs text-gray-500 p-2">포함 가능한 그룹이 없습니다.</p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
 
-              {/* 제외할 그룹 */}
+              {/* 제외할 그룹 - 체크박스 (다중 선택) */}
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">제외할 친구 그룹 ({excludedGroupIds.length})</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">제외할 친구 그룹</h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
                   {groupOptions.length === 0 ? (
                     <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
@@ -411,7 +439,6 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                           />
                           <span className="flex-1">
                             {option.group.title}
-                            <span className="text-gray-400 ml-1">({option.friendCount})</span>
                           </span>
                         </label>
                       ))
@@ -423,16 +450,6 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
               </div>
             </div>
           )}
-
-          {/* 예상 발송 대상 */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-blue-700">예상 발송 대상</span>
-              <span className="text-lg font-bold text-blue-900">
-                {estimatedRecipients.toLocaleString()}명
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 

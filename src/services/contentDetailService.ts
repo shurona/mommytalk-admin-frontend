@@ -52,14 +52,25 @@ export const updateContent = async (
 };
 
 /**
- * 콘텐츠 삭제
- * DELETE /v1/channels/{channelId}/messages/{messageId}
+ * 메시지 발송 취소
+ * DELETE /v1/channels/{channelId}/messages/{messageId}/cancel
  */
-export const deleteContent = async (
+export const cancelMessage = async (
   channelId: ChannelId,
   messageId: number
 ): Promise<void> => {
-  await api.delete(`/v1/channels/${channelId}/messages/${messageId}`);
+  await api.delete(`/v1/channels/${channelId}/messages/${messageId}/cancel`);
+};
+
+/**
+ * 메시지 재발송
+ * PATCH /v1/channels/{channelId}/messages/{messageId}/resend
+ */
+export const resendMessage = async (
+  channelId: ChannelId,
+  messageId: number
+): Promise<void> => {
+  await api.patch(`/v1/channels/${channelId}/messages/${messageId}/resend`);
 };
 
 /**

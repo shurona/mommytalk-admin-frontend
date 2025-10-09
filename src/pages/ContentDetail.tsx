@@ -7,7 +7,7 @@ import type {
   MessageLogDetail
 } from "../types";
 import { statusLabels, statusStyles, sendStatusLabels, sendStatusStyles } from "../types/contentList";
-import { getContentDetail, getMessageDetails, deleteContent } from "../services/contentDetailService";
+import { getContentDetail, getMessageDetails, cancelMessage, resendMessage } from "../services/contentDetailService";
 
 interface ContentDetailProps {
   selectedChannel: Channel | null;
@@ -85,17 +85,33 @@ export default function ContentDetail({ selectedChannel }: ContentDetailProps) {
     navigate("/content-list");
   };
 
-  const handleDelete = async () => {
+  const handleCancel = async () => {
     if (!content || !selectedChannel) return;
 
     if (confirm("정말 발송을 취소하시겠습니까?")) {
       try {
-        await deleteContent(selectedChannel.channelId, content.id);
+        await cancelMessage(selectedChannel.channelId, content.id);
         alert("발송이 취소되었습니다.");
         navigate("/content-list");
       } catch (error) {
         console.error('발송 취소 실패:', error);
         alert("발송 취소에 실패했습니다.");
+      }
+    }
+  };
+
+  const handleResend = async () => {
+    if (!content || !selectedChannel) return;
+
+    if (confirm("메시지를 재발송하시겠습니까?")) {
+      try {
+        await resendMessage(selectedChannel.channelId, content.id);
+        alert("메시지가 재발송되었습니다.");
+        // 메시지 로그 새로고침
+        await loadMessageLogs(logPage);
+      } catch (error) {
+        console.error('재발송 실패:', error);
+        alert("재발송에 실패했습니다.");
       }
     }
   };
@@ -359,11 +375,17 @@ export default function ContentDetail({ selectedChannel }: ContentDetailProps) {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">🛠️ 액션</h2>
         <div className="flex gap-3">
           <button
-            onClick={handleDelete}
+            onClick={handleCancel}
             className="flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
           >
             <Trash2 className="h-4 w-4 mr-2" />
             발송 취소
+          </button>
+          <button
+            onClick={handleResend}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            재발송
           </button>
         </div>
       </div>

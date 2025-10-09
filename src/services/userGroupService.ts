@@ -18,15 +18,33 @@ import {
 
 const userGroupService = {
   /**
-   * 채널의 사용자 그룹 목록 조회
+   * 자동 업데이트 그룹 목록 조회 (AUTO_ACTIVE, AUTO_ENDED)
    * @param {ChannelId} channelId - 채널 ID
-   * @returns {Promise<UserGroup[]>} 그룹 목록
+   * @returns {Promise<UserGroup[]>} 자동 그룹 목록
    */
-  getUserGroups: async (channelId: ChannelId): Promise<UserGroup[]> => {
-    const response = await api.get<ApiResponse<PageResponseDto<UserGroup>>>(
+  getAutoGroups: async (channelId: ChannelId): Promise<UserGroup[]> => {
+    const response = await api.get<ApiResponse<UserGroup[]>>(
       `/v1/channels/${channelId}/user-groups`
     );
-    return response.data.data.content; // 페이징된 데이터에서 content 추출
+    return response.data.data;
+  },
+
+  /**
+   * 커스텀 그룹 목록 페이징 조회
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {number} page - 페이지 번호
+   * @param {number} size - 페이지 사이즈
+   * @returns {Promise<PageResponseDto<UserGroup>>} 페이징된 커스텀 그룹 목록
+   */
+  getCustomGroups: async (
+    channelId: ChannelId,
+    page: number = 0,
+    size: number = 50
+  ): Promise<PageResponseDto<UserGroup>> => {
+    const response = await api.get<ApiResponse<PageResponseDto<UserGroup>>>(
+      `/v1/channels/${channelId}/user-groups/custom?page=${page}&size=${size}`
+    );
+    return response.data.data;
   },
 
   /**
