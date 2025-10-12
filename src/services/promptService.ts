@@ -92,6 +92,16 @@ export const promptService = {
       `/v1/channels/${channelId}/prompt/${promptId}/register`
     );
     return response.data.data;
+  },
+
+  /**
+   * 프롬프트 삭제
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {number} promptId - 프롬프트 ID
+   * @returns {Promise<void>}
+   */
+  async deletePrompt(channelId: ChannelId, promptId: number): Promise<void> {
+    await api.delete(`/v1/channels/${channelId}/prompt/${promptId}`);
   }
 };
 

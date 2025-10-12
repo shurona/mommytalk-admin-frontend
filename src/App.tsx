@@ -13,6 +13,7 @@ import ContentList from "./pages/ContentList";
 import ContentDetail from "./pages/ContentDetail";
 import ContentGroupSettings from "./pages/ContentGroupSettings";
 import PromptManagement from "./pages/PromptManagement";
+import TestUserManagement from "./pages/TestUserManagement";
 import AllUsers from "./pages/AllUsers";
 import Purchasers from "./pages/Purchasers";
 import ServiceGroups from "./pages/ServiceGroups";
@@ -108,6 +109,13 @@ function AdminApp(): JSX.Element {
                 <LoadingPage title="🔧 프롬프트 관리" />
               ) : (
                 <PromptManagement selectedChannel={selectedChannel} />
+              )
+            } />
+            <Route path="/test-user-management" element={
+              loadingChannels ? (
+                <LoadingPage title="🧪 테스트 유저 관리" />
+              ) : (
+                <TestUserManagement selectedChannel={selectedChannel} />
               )
             } />
 

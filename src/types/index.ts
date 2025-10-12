@@ -10,3 +10,4 @@ export * from './contentGeneration';
 export * from './contentList';
 export * from './messageType';
 export * from './prompt';
+export * from './testUser';

@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
-import { History, Plus } from "lucide-react";
+import { History, Plus, Trash2 } from "lucide-react";
 import { promptService } from "../services/promptService";
 import type { Channel } from "../types";
-import type {
-  Prompt,
+import {
   PromptType,
-  PromptHistoryItem,
-  InsertPromptRequest,
-  UpdatePromptRequest
+  type PromptHistoryItem,
+  type InsertPromptRequest,
+  type UpdatePromptRequest
 } from "../types/prompt";
 
 interface PromptManagementProps {
@@ -31,7 +30,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
 
   // 모달 상태
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [createType, setCreateType] = useState<PromptType>("BASIC");
+  const [createType, setCreateType] = useState<PromptType>(PromptType.BASIC);
   const [createLabel, setCreateLabel] = useState<string>("");
   const [createPrompt, setCreatePrompt] = useState<string>("");
 
@@ -60,7 +59,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
       ]);
 
       // BASIC 프롬프트 초기화
-      const basicPromptData = prompts.find(p => p.type === "BASIC");
+      const basicPromptData = prompts.find(p => p.type === PromptType.BASIC);
       if (basicPromptData) {
         setBasicPromptId(basicPromptData.id);
         setBasicPrompt(basicPromptData.prompt);
@@ -74,7 +73,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
       }
 
       // ADVANCE 프롬프트 초기화
-      const advancePromptData = prompts.find(p => p.type === "ADVANCE");
+      const advancePromptData = prompts.find(p => p.type === PromptType.ADVANCE);
       if (advancePromptData) {
         setAdvancePromptId(advancePromptData.id);
         setAdvancePrompt(advancePromptData.prompt);
@@ -122,7 +121,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
       // 프롬프트 상세 조회
       const promptData = await promptService.getPromptById(selectedChannel.channelId, item.id);
 
-      if (type === "BASIC") {
+      if (type === PromptType.BASIC) {
         setSelectedBasicHistory(item.id);
         setBasicPromptId(promptData.id);
         setBasicLabel(item.label);
@@ -171,7 +170,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
       await loadPromptData();
 
       // 생성된 프롬프트를 현재 선택으로 표시
-      if (createType === "BASIC") {
+      if (createType === PromptType.BASIC) {
         setBasicPromptId(promptId);
         setBasicPrompt(createPrompt.trim());
         setBasicLabel(createLabel.trim());
@@ -194,9 +193,9 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
   const handleUpdatePrompt = async (type: PromptType) => {
     if (!selectedChannel?.channelId) return;
 
-    const promptId = type === "BASIC" ? basicPromptId : advancePromptId;
-    const label = type === "BASIC" ? basicLabel : advanceLabel;
-    const prompt = type === "BASIC" ? basicPrompt : advancePrompt;
+    const promptId = type === PromptType.BASIC ? basicPromptId : advancePromptId;
+    const label = type === PromptType.BASIC ? basicLabel : advanceLabel;
+    const prompt = type === PromptType.BASIC ? basicPrompt : advancePrompt;
 
     if (!promptId) {
       alert('수정할 프롬프트를 선택해주세요.');
@@ -231,7 +230,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
   const handleRegisterPrompt = async (type: PromptType) => {
     if (!selectedChannel?.channelId) return;
 
-    const promptId = type === "BASIC" ? basicPromptId : advancePromptId;
+    const promptId = type === PromptType.BASIC ? basicPromptId : advancePromptId;
 
     if (!promptId) {
       alert('등록할 프롬프트를 선택해주세요.');
@@ -247,6 +246,46 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
     } catch (err: any) {
       console.error('프롬프트 등록 실패:', err);
       alert(err.response?.data?.message || '프롬프트 등록에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 프롬프트 삭제
+  const handleDeletePrompt = async (type: PromptType, item: PromptHistoryItem, e: React.MouseEvent) => {
+    e.stopPropagation(); // 히스토리 클릭 이벤트 방지
+
+    if (!selectedChannel?.channelId) return;
+
+    const history = type === PromptType.BASIC ? basicHistory : advanceHistory;
+    const typeName = type === PromptType.BASIC ? "콘텐츠 생성" : "응용표현";
+
+    // 검증 1: 현재 등록된 프롬프트는 삭제 불가
+    if (item.selected) {
+      alert('현재 등록된 프롬프트는 삭제할 수 없습니다.');
+      return;
+    }
+
+    // 검증 2: 최소 1개는 남겨두기
+    if (history.length <= 1) {
+      alert(`${typeName} 프롬프트는 최소 1개 이상 유지되어야 합니다.`);
+      return;
+    }
+
+    // 확인 대화상자
+    if (!confirm(`버전 '${item.label}'을(를) 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await promptService.deletePrompt(selectedChannel.channelId, item.id);
+      await loadPromptData();
+
+      alert('프롬프트가 삭제되었습니다.');
+    } catch (err: any) {
+      console.error('프롬프트 삭제 실패:', err);
+      alert(err.response?.data?.message || '프롬프트 삭제에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -276,7 +315,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">콘텐츠 생성 프롬프트 (BASIC)</h2>
             <button
-              onClick={() => handleOpenCreateModal("BASIC")}
+              onClick={() => handleOpenCreateModal(PromptType.BASIC)}
               className="flex items-center px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
               disabled={loading}
             >
@@ -309,14 +348,14 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
 
           <div className="flex items-center space-x-2 mt-2">
             <button
-              onClick={() => handleUpdatePrompt("BASIC")}
+              onClick={() => handleUpdatePrompt(PromptType.BASIC)}
               className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
               disabled={loading || !basicPromptId}
             >
               수정
             </button>
             <button
-              onClick={() => handleRegisterPrompt("BASIC")}
+              onClick={() => handleRegisterPrompt(PromptType.BASIC)}
               className="flex-1 px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
               disabled={loading || !basicPromptId}
             >
@@ -335,18 +374,38 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
                 basicHistory.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => handleHistoryClick("BASIC", item)}
+                    onClick={() => handleHistoryClick(PromptType.BASIC, item)}
                     className={`border rounded p-2 cursor-pointer hover:bg-gray-50 ${
                       selectedBasicHistory === item.id ? 'bg-blue-50 border-blue-500' : ''
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">{item.label}</div>
-                      {item.selected && (
-                        <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
-                          현재 등록됨
-                        </span>
-                      )}
+                      <div className="text-sm font-medium flex-1">{item.label}</div>
+                      <div className="flex items-center gap-2">
+                        {item.selected && (
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                            현재 등록됨
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => handleDeletePrompt(PromptType.BASIC, item, e)}
+                          disabled={item.selected || basicHistory.length <= 1 || loading}
+                          className={`p-1 rounded hover:bg-red-50 ${
+                            item.selected || basicHistory.length <= 1
+                              ? 'opacity-30 cursor-not-allowed'
+                              : 'text-red-600 hover:text-red-700'
+                          }`}
+                          title={
+                            item.selected
+                              ? '현재 등록된 프롬프트는 삭제할 수 없습니다'
+                              : basicHistory.length <= 1
+                              ? '최소 1개 이상 유지되어야 합니다'
+                              : '삭제'
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="text-xs text-gray-500">
                       {new Date(item.createdAt).toLocaleString('ko-KR')}
@@ -363,7 +422,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">응용표현 프롬프트 (ADVANCE)</h2>
             <button
-              onClick={() => handleOpenCreateModal("ADVANCE")}
+              onClick={() => handleOpenCreateModal(PromptType.ADVANCE)}
               className="flex items-center px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
               disabled={loading}
             >
@@ -396,14 +455,14 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
 
           <div className="flex items-center space-x-2 mt-2">
             <button
-              onClick={() => handleUpdatePrompt("ADVANCE")}
+              onClick={() => handleUpdatePrompt(PromptType.ADVANCE)}
               className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
               disabled={loading || !advancePromptId}
             >
               수정
             </button>
             <button
-              onClick={() => handleRegisterPrompt("ADVANCE")}
+              onClick={() => handleRegisterPrompt(PromptType.ADVANCE)}
               className="flex-1 px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
               disabled={loading || !advancePromptId}
             >
@@ -422,18 +481,38 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
                 advanceHistory.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => handleHistoryClick("ADVANCE", item)}
+                    onClick={() => handleHistoryClick(PromptType.ADVANCE, item)}
                     className={`border rounded p-2 cursor-pointer hover:bg-gray-50 ${
                       selectedAdvanceHistory === item.id ? 'bg-blue-50 border-blue-500' : ''
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">{item.label}</div>
-                      {item.selected && (
-                        <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
-                          현재 등록됨
-                        </span>
-                      )}
+                      <div className="text-sm font-medium flex-1">{item.label}</div>
+                      <div className="flex items-center gap-2">
+                        {item.selected && (
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                            현재 등록됨
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => handleDeletePrompt(PromptType.ADVANCE, item, e)}
+                          disabled={item.selected || advanceHistory.length <= 1 || loading}
+                          className={`p-1 rounded hover:bg-red-50 ${
+                            item.selected || advanceHistory.length <= 1
+                              ? 'opacity-30 cursor-not-allowed'
+                              : 'text-red-600 hover:text-red-700'
+                          }`}
+                          title={
+                            item.selected
+                              ? '현재 등록된 프롬프트는 삭제할 수 없습니다'
+                              : advanceHistory.length <= 1
+                              ? '최소 1개 이상 유지되어야 합니다'
+                              : '삭제'
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="text-xs text-gray-500">
                       {new Date(item.createdAt).toLocaleString('ko-KR')}
@@ -453,7 +532,7 @@ export default function PromptManagement({ selectedChannel }: PromptManagementPr
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">
-                  {createType === "BASIC" ? "콘텐츠 생성" : "응용표현"} 프롬프트 생성
+                  {createType === PromptType.BASIC ? "콘텐츠 생성" : "응용표현"} 프롬프트 생성
                 </h3>
                 <button
                   onClick={() => setShowCreateModal(false)}

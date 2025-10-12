@@ -32,6 +32,7 @@ export default function Sidebar() {
         { id: "content-list", label: "콘텐츠 목록" },
         { id: "content-group-settings", label: "콘텐츠 발송 및 그룹 설정" },
         { id: "prompt-management", label: "프롬프트 관리" },
+        { id: "test-user-management", label: "테스트 유저 관리" },
         { id: "welcome-message", label: "웰컴 메시지 (별도)" },
         { id: "notification-message", label: "알림톡 메시지 (별도)" },
       ],
