@@ -6,7 +6,6 @@ import type {
   ContentCountResponse,
   ContentUpdateRequest,
   ContentTestRequest,
-  ContentApprovalRequest,
   ContentActionResponse
 } from '../types';
 
