@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { contentGenerationService } from "../services/contentGenerationService";
 import { messageTypeService } from "../services/messageTypeService";
+import type { Channel, GeneratedContent, MessageTypeInfoResponse, MessageTypeContentInfo } from "../types";
 
 /** 텍스트 스타일 (가독성 위주) */
 const MSG_STYLE = {
@@ -9,14 +10,29 @@ const MSG_STYLE = {
 };
 
 /** 제품 정의 */
-const PRODUCTS = [
+interface Product {
+  id: string;
+  label: string;
+  hasVoca: boolean;
+}
+
+const PRODUCTS: Product[] = [
   { id: "365", label: "마미톡 365", hasVoca: false },
   { id: "combo", label: "마미톡 365+마미보카", hasVoca: true },
 ];
 
+/** TTS 보이스 프리셋 (예시) */
+interface Voice {
+  id: string;
+  name: string;
+}
 
-const seedText = (c, m) =>
-  `Good day! (아이 Lv${c} × 엄마 Lv${m})\n오늘도 우리 아이와 짧게 영어로 이야기해요.`;
+const VOICES: Voice[] = [
+  { id: "sarah_f", name: "Sarah (여성)" },
+  { id: "olivia_f", name: "Olivia (여성)" },
+  { id: "matt_m", name: "Matt (남성)" },
+  { id: "junko_f", name: "Junko (JP 여성)" },
+];
 
 /** 버튼 프리셋 */
 const BTN_BASE = "w-full py-2 rounded text-[12px] transition border";
@@ -25,89 +41,130 @@ const BTN_PRIMARY = `${BTN_BASE} bg-[#2563EB] border-[#1E40AF] text-white hover:
 const BTN_SECONDARY = `${BTN_BASE} bg-white border-[#E5E7EB] text-[#111827] hover:bg-gray-50`; // 흰색
 const BTN_APPROVE = `${BTN_BASE} text-white hover:opacity-90`; // 승인 버튼(#F65159)
 
-/** TTS 보이스 프리셋 (예시) */
-const VOICES = [
-  { id: "sarah_f", name: "Sarah (여성)" },
-  { id: "olivia_f", name: "Olivia (여성)" },
-  { id: "matt_m", name: "Matt (남성)" },
-  { id: "junko_f", name: "Junko (JP 여성)" },
-];
+/** 오디오 설정 인터페이스 */
+interface AudioSettings {
+  editableLabel: string;
+  editingLabel: boolean;
+  voice: string;
+  speed: number;
+  text: string;
+  status: "idle" | "generating" | "success";
+  url: string;
+}
 
-export default function ContentGeneration({ country = "KOR", selectedChannel }) {
+interface AudioConfig {
+  mom: AudioSettings;
+  child: AudioSettings;
+}
+
+/** 보카 설정 인터페이스 */
+interface VocaConfig {
+  label: string;
+  editingLabel: boolean;
+  url: string;
+}
+
+/** 다이어리 설정 인터페이스 */
+interface DiaryConfig {
+  label: string;
+  url: string;
+  editingLabel: boolean;
+  editingUrl: boolean;
+}
+
+
+/** 콘텐츠 행 인터페이스 */
+interface ContentRow {
+  key: string;
+  productId: string;
+  productLabel: string;
+  hasVoca: boolean;
+  child: number;
+  mom: number;
+  text: string;
+  number: number;
+  title: string;
+}
+
+interface ContentGenerationProps {
+  country?: "KOR" | "JPN";
+  selectedChannel: Channel | null;
+}
+
+export default function ContentGeneration({
+  country = "KOR",
+  selectedChannel
+}: ContentGenerationProps): JSX.Element {
   const isJP = country === "JPN";
   const audioButtonLabelDefaultMom = isJP ? "ママの発音🔈" : "엄마발음🔈";
   const audioButtonLabelDefaultChild = isJP ? "キッズの発音🔈" : "아이발음🔈";
   const vocaDefaultLabel = isJP ? "デジタルフラッシュカード" : "마미보카📩";
   const diaryDefaultLabel = isJP ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️";
   const audioGenerateLabel = isJP ? "AI音声生成" : "AI음성 생성";
-  const DIARY_DEFAULT_URL = "https://mamitalk.example.com/diary"; // (1) 기본 URL 자동 삽입
+  const DIARY_DEFAULT_URL = "https://mamitalk.example.com/diary";
 
-  const [contentTheme, setContentTheme] = useState("");
-  const [contentContext, setContentContext] = useState("");
-  const [contentDate, setContentDate] = useState(() => {
+  const [contentTheme, setContentTheme] = useState<string>("");
+  const [contentContext, setContentContext] = useState<string>("");
+  const [contentDate, setContentDate] = useState<string>(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    return tomorrow.toISOString().split('T')[0];
   });
-  const [childLevel, setChildLevel] = useState(1);
-  const [momLevel, setMomLevel] = useState(1);
-  const [selectedLanguage, setSelectedLanguage] = useState("KOR");
+  const [childLevel, setChildLevel] = useState<number>(1);
+  const [momLevel, setMomLevel] = useState<number>(1);
+  const [selectedLanguage, setSelectedLanguage] = useState<"KOR" | "JPN">("KOR");
 
   /** API 상태 관리 */
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [currentContent, setCurrentContent] = useState(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
+  const [currentContent, setCurrentContent] = useState<GeneratedContent | null>(null);
 
   /** 9개 레벨별 콘텐츠 생성 상태 */
-  const [levelContentInfo, setLevelContentInfo] = useState({});
+  const [levelContentInfo, setLevelContentInfo] = useState<MessageTypeContentInfo>({});
 
   /** MessageType 상태 관리 */
-  const [messageTypeExists, setMessageTypeExists] = useState(false);
-  const [messageTypeLoading, setMessageTypeLoading] = useState(true);
-  const [editingMessageType, setEditingMessageType] = useState(false);
-  const [messageTypeId, setMessageTypeId] = useState(null);
+  const [messageTypeExists, setMessageTypeExists] = useState<boolean>(false);
+  const [messageTypeLoading, setMessageTypeLoading] = useState<boolean>(true);
+  const [editingMessageType, setEditingMessageType] = useState<boolean>(false);
+  const [messageTypeId, setMessageTypeId] = useState<number | null>(null);
 
   /** 생성 결과(카드별 본문 메시지) */
-  // key: `${productId}|${child}_${mom}`
-  const [messages, setMessages] = useState(null);
+  const [messages, setMessages] = useState<Record<string, string> | null>(null);
 
   /** 카드별 상태들 */
-  const [groupTargets, setGroupTargets] = useState({});
-  const [approvedKeys, setApprovedKeys] = useState(new Set());
+  const [, setGroupTargets] = useState<Record<string, string>>({});
+  const [approvedKeys, setApprovedKeys] = useState<Set<string>>(new Set());
 
   /** 오디오(엄마/아이) 및 부가 버튼(보카/다이어리) 상태 */
-  const [audioConfig, setAudioConfig] = useState({}); // { key: { mom:{...}, child:{...} } }
-  const [vocaConfigs, setVocaConfigs] = useState({}); // { key: { label, url, editingLabel } } (보카 상품만)
-  const [diaryConfigs, setDiaryConfigs] = useState({}); // { key: { label, url, editingLabel, editingUrl } }
+  const [audioConfig, setAudioConfig] = useState<Record<string, AudioConfig>>({});
+  const [vocaConfigs, setVocaConfigs] = useState<Record<string, VocaConfig>>({});
+  const [diaryConfigs, setDiaryConfigs] = useState<Record<string, DiaryConfig>>({});
 
   // MessageType 조회 함수 (9개 레벨 contentInfo 포함)
-  const loadMessageType = async (channelId, date) => {
+  const loadMessageType = async (channelId: string, date: string): Promise<void> => {
     try {
       setMessageTypeLoading(true);
-      setError(""); // 에러 초기화
+      setError("");
 
       // YYYY-MM-DD -> YYYYMMDD 형식으로 변환
       const dateInfo = date.replace(/-/g, '');
 
-      const messageTypeInfo = await messageTypeService.getMessageTypeByDate(channelId, dateInfo);
+      const messageTypeInfo: MessageTypeInfoResponse | null = await messageTypeService.getMessageTypeByDate(channelId, dateInfo);
 
       if (messageTypeInfo) {
-        // 데이터 있음
         setMessageTypeId(messageTypeInfo.id);
         setContentTheme(messageTypeInfo.theme);
         setContentContext(messageTypeInfo.context);
         setLevelContentInfo(messageTypeInfo.contentInfo || {});
         setMessageTypeExists(true);
       } else {
-        // 데이터 없음 (정상 상황 - 백엔드에서 null 반환)
         setMessageTypeId(null);
         setContentTheme("");
         setContentContext("");
         setLevelContentInfo({});
         setMessageTypeExists(false);
       }
-    } catch (error) {
-      // 실제 에러만 처리 (네트워크 오류, 500 등)
+    } catch (error: any) {
       console.error('MessageType 조회 실패:', error);
       setError(error.response?.data?.message || 'MessageType 정보를 불러오는데 실패했습니다.');
       setMessageTypeExists(false);
@@ -124,7 +181,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   }, [selectedChannel, contentDate]);
 
   /** 조회 및 생성: 없으면 생성 */
-  const generateOrRetrieve = async (regenerate = false) => {
+  const generateOrRetrieve = async (regenerate = false): Promise<void> => {
     if (!selectedChannel) {
       alert("채널을 선택해주세요.");
       return;
@@ -134,6 +191,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
     setError("");
 
     try {
+      // 1단계: 콘텐츠 생성/조회 → contentId 받기
       const request = {
         theme: contentTheme,
         context: contentContext,
@@ -144,12 +202,17 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         regenerate: regenerate
       };
 
-      const response = await contentGenerationService.generateContent(
+      const contentId = await contentGenerationService.generateContent(
         selectedChannel.channelId,
         request
       );
 
-      const content = response.content;
+      // 2단계: contentId로 상세 조회
+      const content = await contentGenerationService.getContentDetail(
+        selectedChannel.channelId,
+        contentId
+      );
+
       setCurrentContent(content);
 
       // UI 상태 업데이트
@@ -157,33 +220,33 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       const selectedProductObj = PRODUCTS.find(p => p.id === selectedProduct);
       const key = `${selectedProduct}|${childLevel}_${momLevel}`;
 
-      const msg = { [key]: content.messageText };
-      const tgt = { [key]: "전체 사용자" };
+      const msg: Record<string, string> = { [key]: content.messageText };
+      const tgt: Record<string, string> = { [key]: "전체 사용자" };
 
-      const audio = {
+      const audio: Record<string, AudioConfig> = {
         [key]: {
           mom: {
             editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
             editingLabel: false,
             voice: VOICES[0].id,
             speed: 1.0,
-            text: content.messageText,
+            text: content.momAudioText || "",
             status: "idle",
-            url: content.momAudioUrl || "https://cdn.example.com/mock-mom-audio.mp3",
+            url: content.momAudioUrl || "",
           },
           child: {
             editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
             editingLabel: false,
             voice: VOICES[2].id,
             speed: 1.0,
-            text: content.messageText,
+            text: content.childAudioText || "",
             status: "idle",
-            url: content.childAudioUrl || "https://cdn.example.com/mock-child-audio.mp3",
+            url: content.childAudioUrl || "",
           },
         }
       };
 
-      const voca = {};
+      const voca: Record<string, VocaConfig> = {};
       if (selectedProductObj?.hasVoca && content.vocaUrl) {
         voca[key] = {
           label: selectedLanguage === "JPN" ? "デジタルフラッシュカード" : "마미보카📩",
@@ -192,7 +255,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         };
       }
 
-      const diary = {
+      const diary: Record<string, DiaryConfig> = {
         [key]: {
           label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
           url: content.diaryUrl || DIARY_DEFAULT_URL,
@@ -211,7 +274,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       // 9개 레벨 상태 다시 조회
       await loadMessageType(selectedChannel.channelId, contentDate);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('콘텐츠 생성/조회 실패:', error);
       setError(error.response?.data?.message || '콘텐츠 생성에 실패했습니다.');
     } finally {
@@ -220,13 +283,19 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** 업데이트 헬퍼 */
-  const updateMessage = (key, val) => setMessages((p) => ({ ...p, [key]: val }));
-  const updateTarget = (key, val) => setGroupTargets((p) => ({ ...p, [key]: val }));
+  const updateMessage = (key: string, val: string): void =>
+    setMessages((p) => p ? { ...p, [key]: val } : { [key]: val });
 
-  const updateAudioField = (key, role, patch) =>
-    setAudioConfig((p) => ({ ...p, [key]: { ...p[key], [role]: { ...p[key][role], ...patch } } }));
+  const updateAudioField = (key: string, role: "mom" | "child", patch: Partial<AudioSettings>): void =>
+    setAudioConfig((p) => ({
+      ...p,
+      [key]: {
+        ...p[key],
+        [role]: { ...p[key][role], ...patch }
+      }
+    }));
 
-  const resetAudio = (key, role, baseText) =>
+  const resetAudio = (key: string, role: "mom" | "child", baseText: string): void =>
     setAudioConfig((p) => ({
       ...p,
       [key]: {
@@ -243,23 +312,79 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       },
     }));
 
-  const updateVoca = (key, patch) => setVocaConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
-  const updateDiary = (key, patch) => setDiaryConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const updateVoca = (key: string, patch: Partial<VocaConfig>): void =>
+    setVocaConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+
+  const updateDiary = (key: string, patch: Partial<DiaryConfig>): void =>
+    setDiaryConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
 
   /** 오디오 생성/미리듣기/버튼에 넣기 */
-  const generateAudio = (key, role) => {
+  const generateAudio = async (key: string, role: "mom" | "child"): Promise<void> => {
+    if (!selectedChannel || !currentContent) {
+      alert("먼저 수정하기 버튼으로 메시지를 저장해주세요.");
+      return;
+    }
+
+    const audioData = audioConfig?.[key]?.[role];
+    if (!audioData) {
+      alert("오디오 설정을 찾을 수 없습니다.");
+      return;
+    }
+
     updateAudioField(key, role, { status: "generating" });
-    setTimeout(() => {
-      // Mock URL 반환
-      const url = role === "mom" ? "https://cdn.example.com/mock-mom-audio.mp3" : "https://cdn.example.com/mock-child-audio.mp3";
-      updateAudioField(key, role, { url, status: "success" });
-    }, 900);
+
+    try {
+      const audioRole = role === "mom" ? "MOMMY" : "CHILD";
+
+      const response = await contentGenerationService.generateAudio(
+        selectedChannel.channelId,
+        currentContent.id,
+        audioData.voice,
+        {
+          text: audioData.text,
+          messageContentId: currentContent.id,
+          speed: audioData.speed,
+          audioRole: audioRole
+        }
+      );
+
+      updateAudioField(key, role, {
+        url: response.fileUrl,
+        status: "success"
+      });
+    } catch (error: any) {
+      console.error('오디오 생성 실패:', error);
+
+      // 404 에러 처리
+      if (error.response?.status === 404) {
+        alert("먼저 수정하기 버튼으로 메시지를 저장해주세요.");
+      } else {
+        alert(error.response?.data?.message || '오디오 생성에 실패했습니다.');
+      }
+
+      updateAudioField(key, role, { status: "idle" });
+    }
   };
-  const previewAudio = (url) => {
-    if (!url) alert("오디오 URL이 아직 없습니다. 먼저 생성해주세요.");
-    else alert(`[재생] ${url}`);
+
+  const previewAudio = (url: string): void => {
+    if (!url) {
+      alert("오디오 URL이 아직 없습니다. 먼저 생성해주세요.");
+      return;
+    }
+
+    try {
+      const audio = new Audio(url);
+      audio.play().catch((err) => {
+        console.error('오디오 재생 실패:', err);
+        alert('오디오 재생에 실패했습니다.');
+      });
+    } catch (error) {
+      console.error('오디오 재생 오류:', error);
+      alert('오디오 재생에 실패했습니다.');
+    }
   };
-  const attachAudioUrlToButton = (key, role) => {
+
+  const attachAudioUrlToButton = (key: string, role: "mom" | "child"): void => {
     const url = audioConfig?.[key]?.[role]?.url || "";
     if (!url) {
       alert("먼저 AI음성 생성으로 URL을 확보해 주세요.");
@@ -269,7 +394,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** 테스트 발송 */
-  const testContent = async (key, title) => {
+  const testContent = async (key: string, title: string): Promise<void> => {
     if (!selectedChannel) {
       alert("채널을 선택해주세요.");
       return;
@@ -285,7 +410,6 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
     try {
       const request = {
         content: messageText
-        // 추후 추가: diary, momAudioUrl, childAudioUrl 등
       };
 
       await contentGenerationService.testContent(
@@ -293,7 +417,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         request
       );
       alert(`테스트 발송 완료: ${title}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('테스트 발송 실패:', error);
       alert(error.response?.data?.message || '테스트 발송에 실패했습니다.');
     } finally {
@@ -302,7 +426,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** 수정하기 */
-  const updateContent = async (key, title) => {
+  const updateContent = async (key: string, title: string): Promise<void> => {
     if (!selectedChannel) {
       alert("채널을 선택해주세요.");
       return;
@@ -319,26 +443,42 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       return;
     }
 
+    const diaryUrl = diaryConfigs?.[key]?.url || "";
+    if (!diaryUrl || diaryUrl.trim() === "") {
+      alert("다이어리 URL을 입력해주세요.");
+      return;
+    }
+
     setIsLoading(true);
     try {
+      // 1단계: 수정 요청 → contentId 받기
       const request = {
         messageTypeId: messageTypeId,
         userLevel: momLevel,
         childLevel: childLevel,
-        content: messageText
-        // 추후 추가: diary, momAudioUrl, childAudioUrl 등
+        content: messageText,
+        diaryUrl: diaryUrl
       };
 
-      await contentGenerationService.updateContent(
+      const contentId = await contentGenerationService.updateContent(
         selectedChannel.channelId,
         request
       );
+
+      // 2단계: contentId로 상세 조회
+      const content = await contentGenerationService.getContentDetail(
+        selectedChannel.channelId,
+        contentId
+      );
+
+      // currentContent 업데이트
+      setCurrentContent(content);
 
       // 9개 레벨 상태 다시 조회
       await loadMessageType(selectedChannel.channelId, contentDate);
 
       alert(`수정 완료: ${title}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('수정 실패:', error);
       alert(error.response?.data?.message || '수정에 실패했습니다.');
     } finally {
@@ -347,7 +487,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** 승인 */
-  const approveContent = async (key, title) => {
+  const approveContent = async (key: string, title: string): Promise<void> => {
     if (!selectedChannel || !currentContent) {
       alert("콘텐츠를 먼저 생성해주세요.");
       return;
@@ -367,7 +507,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       });
 
       alert(`승인 완료: ${title}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('승인 실패:', error);
       alert(error.response?.data?.message || '승인에 실패했습니다.');
     } finally {
@@ -376,7 +516,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** MessageType 저장/수정 */
-  const saveMessageType = async () => {
+  const saveMessageType = async (): Promise<void> => {
     if (!selectedChannel) {
       alert("채널을 선택해주세요.");
       return;
@@ -386,6 +526,9 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
       alert("주제와 맥락을 모두 입력해주세요.");
       return;
     }
+
+    // 승인된 콘텐츠 개수 계산
+    const approvedCount = Object.values(levelContentInfo).filter(content => content && content.trim() !== '').length;
 
     // 승인된 콘텐츠가 있고 기존 MessageType을 수정하는 경우 경고
     if (messageTypeExists && approvedCount > 0) {
@@ -405,21 +548,17 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         context: contentContext.trim()
       };
 
-      const wasUpdating = messageTypeExists; // 수정인지 생성인지 기록
-
       if (messageTypeExists) {
-        // 수정
         const response = await messageTypeService.updateMessageType(selectedChannel.channelId, request);
-        setMessageTypeId(response.id); // ID 업데이트
+        setMessageTypeId(response.id);
         alert("주제/맥락이 수정되었습니다.");
       } else {
-        // 생성
         const response = await messageTypeService.createMessageType(selectedChannel.channelId, request);
-        setMessageTypeId(response.id); // 생성된 ID 저장
+        setMessageTypeId(response.id);
         setMessageTypeExists(true);
         alert("주제/맥락이 저장되었습니다.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('MessageType 저장 실패:', error);
       setError(error.response?.data?.message || 'MessageType 저장에 실패했습니다.');
     } finally {
@@ -428,17 +567,18 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   };
 
   /** 수정 취소 */
-  const cancelEditMessageType = () => {
+  const cancelEditMessageType = (): void => {
     setEditingMessageType(false);
-    // 원래 값으로 복원
-    loadMessageType(selectedChannel.channelId, contentDate);
+    if (selectedChannel) {
+      loadMessageType(selectedChannel.channelId, contentDate);
+    }
   };
 
   /** 타이틀/정렬용 메타 계산 */
-  const items = useMemo(() => {
+  const items: ContentRow[] = useMemo(() => {
     if (!messages) return [];
-    const productMap = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
-    const counters = { 365: 0, combo: 0 };
+    const productMap: Record<string, Product> = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
+    const counters: Record<string, number> = { 365: 0, combo: 0 };
 
     const rows = Object.entries(messages).map(([key, text]) => {
       const [productId, lv] = key.split("|");
@@ -452,6 +592,8 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
         child,
         mom,
         text,
+        number: 0,
+        title: ""
       };
     });
 
@@ -470,6 +612,18 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
   }, [messages]);
 
   /** 미리보기 컴포넌트 (우측 1/4~1/3 세로 모바일 화면) */
+  interface PreviewBubbleProps {
+    momBtnLabel: string;
+    childBtnLabel: string;
+    momUrl: string;
+    childUrl: string;
+    vocaLabelText: string;
+    vocaUrl: string;
+    diaryLabelText: string;
+    diaryUrl: string;
+    bodyText: string;
+  }
+
   const PreviewBubble = ({
     momBtnLabel,
     childBtnLabel,
@@ -480,7 +634,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
     diaryLabelText,
     diaryUrl,
     bodyText,
-  }) => (
+  }: PreviewBubbleProps): JSX.Element => (
     <div className="rounded-lg p-3" style={{ backgroundColor: "#84A1D0" }}>
       <div className="bg-white rounded-lg w-[320px] min-h-[560px] shadow-sm border border-gray-200 mx-auto">
         {/* 상단 앱 바 */}
@@ -658,7 +812,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
             <div className="text-[12px] text-slate-600 mb-1 font-medium">언어</div>
             <select
               value={selectedLanguage}
-              onChange={(e) => setSelectedLanguage(e.target.value)}
+              onChange={(e) => setSelectedLanguage(e.target.value as "KOR" | "JPN")}
               className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <option value="KOR">한국어</option>
@@ -714,8 +868,9 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                   부모{userLevel}
                 </td>
                   {[1, 2, 3].map((childLv) => {
-                    const levelKey = `${userLevel}_${childLv}`;
-                    const hasContent = levelContentInfo[levelKey] && levelContentInfo[levelKey].trim() !== '';
+                    const levelKey = `${userLevel}_${childLv}` as keyof MessageTypeContentInfo;
+                    const contentValue = levelContentInfo[levelKey];
+                    const hasContent = contentValue && contentValue.trim() !== '';
                     const isSelected = childLevel === childLv && momLevel === userLevel;
 
                     return (
@@ -730,7 +885,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
 
                             const selectedProduct = "365";
                             const key = `${selectedProduct}|${userLevel}_${childLv}`;
-                            const messageText = hasContent ? levelContentInfo[levelKey] : "";
+                            const messageText = hasContent ? contentValue : "";
 
                             // 메시지 및 UI 상태 설정 (빈 값이어도 표시)
                             setMessages({ [key]: messageText });
@@ -837,8 +992,8 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
             const text = messages[key] || "";
             const hasVoca = row.hasVoca;
 
-            const mom = audioConfig?.[key]?.mom || {};
-            const child = audioConfig?.[key]?.child || {};
+            const mom = audioConfig?.[key]?.mom || {} as AudioSettings;
+            const child = audioConfig?.[key]?.child || {} as AudioSettings;
 
             const voca = hasVoca ? vocaConfigs?.[key] : null;
             const diary = diaryConfigs?.[key];
@@ -846,7 +1001,6 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
             const isApproved = approvedKeys.has(key);
 
             return (
-              // 콘텐츠 박스 border 2px, #707070
               <div
                 key={key}
                 className="bg-white rounded-xl shadow-sm p-4"
@@ -860,7 +1014,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                   </div>
                 </div>
 
-                {/* (2) 좌우 분할: 좌(편집 2컬럼) / 우(모바일 미리보기) */}
+                {/* 좌우 분할: 좌(편집 2컬럼) / 우(모바일 미리보기) */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* 좌측: col-span-2, 내부 2컬럼 폼 배치 */}
                   <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -958,7 +1112,6 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                           </div>
                         </div>
 
-                        {/* (3) 버튼색: 생성/미리듣기=회색, 버튼에 넣기=파랑, 오른쪽 🔄 */}
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => generateAudio(key, "mom")}
@@ -1112,15 +1265,15 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                       </div>
                     </section>
 
-                    {/* (C) 부가 버튼: 보카 / 오늘의 문장 (URL 우측 '수정' 토글) */}
-                    {hasVoca && (
+                    {/* (C) 부가 버튼: 보카 / 오늘의 문장 */}
+                    {hasVoca && voca && (
                       <section className="border rounded-lg">
                         <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
-                          {voca?.editingLabel ? (
+                          {voca.editingLabel ? (
                             <div className="flex items-center gap-2">
                               <input
                                 className="border rounded px-2 py-1 text-[12px]"
-                                value={voca?.label || ""}
+                                value={voca.label || ""}
                                 onChange={(e) => updateVoca(key, { label: e.target.value })}
                               />
                               <button
@@ -1136,7 +1289,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                               onClick={() => updateVoca(key, { editingLabel: true })}
                               title="클릭하여 버튼명을 수정할 수 있습니다."
                             >
-                              {voca?.label || vocaDefaultLabel}
+                              {voca.label || vocaDefaultLabel}
                             </button>
                           )}
                         </header>
@@ -1146,7 +1299,7 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                             <input
                               className="flex-1 p-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                               placeholder="https://voca.example.com/..."
-                              value={voca?.url || ""}
+                              value={voca.url || ""}
                               onChange={(e) => updateVoca(key, { url: e.target.value })}
                             />
                           </div>
@@ -1154,63 +1307,47 @@ export default function ContentGeneration({ country = "KOR", selectedChannel }) 
                       </section>
                     )}
 
-                    <section className="border rounded-lg">
-                      <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
-                        {diary?.editingLabel ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              className="border rounded px-2 py-1 text-[12px]"
-                              value={diary?.label || ""}
-                              onChange={(e) => updateDiary(key, { label: e.target.value })}
-                            />
-                            <button
-                              className={BTN_SECONDARY}
-                              onClick={() => updateDiary(key, { editingLabel: false })}
-                            >
-                              완료
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            className="text-[13px] font-semibold text-slate-800 underline underline-offset-4"
-                            onClick={() => updateDiary(key, { editingLabel: true })}
-                            title="클릭하여 버튼명을 수정할 수 있습니다."
-                          >
-                            {diary?.label || diaryDefaultLabel}
-                          </button>
-                        )}
-                      </header>
-                      <div className="p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-[12px] text-slate-600">URL</label>
-                          {/* (1) 오른쪽 ‘수정/완료’ 버튼으로 URL 수정 토글 */}
-                          {!diary?.editingUrl ? (
-                            <button
-                              className="text-[12px] text-blue-600 hover:underline"
-                              onClick={() => updateDiary(key, { editingUrl: true })}
-                            >
-                              수정
-                            </button>
+                    {diary && (
+                      <section className="border rounded-lg">
+                        <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
+                          {diary.editingLabel ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="border rounded px-2 py-1 text-[12px]"
+                                value={diary.label || ""}
+                                onChange={(e) => updateDiary(key, { label: e.target.value })}
+                              />
+                              <button
+                                className={BTN_SECONDARY}
+                                onClick={() => updateDiary(key, { editingLabel: false })}
+                              >
+                                완료
+                              </button>
+                            </div>
                           ) : (
                             <button
-                              className="text-[12px] text-blue-600 hover:underline"
-                              onClick={() => updateDiary(key, { editingUrl: false })}
+                              className="text-[13px] font-semibold text-slate-800 underline underline-offset-4"
+                              onClick={() => updateDiary(key, { editingLabel: true })}
+                              title="클릭하여 버튼명을 수정할 수 있습니다."
                             >
-                              완료
+                              {diary.label || diaryDefaultLabel}
                             </button>
                           )}
+                        </header>
+                        <div className="p-3">
+                          <label className="block text-[12px] text-slate-600 mb-1">URL</label>
+                          <input
+                            className="w-full p-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            value={diary.url || ""}
+                            onChange={(e) => updateDiary(key, { url: e.target.value })}
+                            placeholder="https://mamitalk.example.com/diary"
+                          />
+                          <div className="text-[12px] text-slate-600 mt-1">
+                            * URL을 수정한 후 하단의 '수정하기' 버튼을 눌러 저장하세요.
+                          </div>
                         </div>
-                        <input
-                          className="w-full p-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50"
-                          value={diary?.url || ""}
-                          onChange={(e) => updateDiary(key, { url: e.target.value })}
-                          disabled={!diary?.editingUrl}
-                        />
-                        <div className="text-[12px] text-slate-600 mt-1">
-                          * 기본 URL이 자동 입력됩니다. 필요 시 ‘수정’으로 변경 후 ‘완료’를 눌러 반영하세요.
-                        </div>
-                      </div>
-                    </section>
+                      </section>
+                    )}
 
                     {/* (D) 액션 버튼 */}
                     <section className="border rounded-lg md:col-span-2">
