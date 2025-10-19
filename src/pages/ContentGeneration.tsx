@@ -1180,8 +1180,8 @@ export default function ContentGeneration({
                             <label className="block text-[12px] text-slate-600 mb-1">속도</label>
                             <input
                               type="range"
-                              min="0.5"
-                              max="2"
+                              min="0.7"
+                              max="1.2"
                               step="0.1"
                               className="w-full"
                               value={mom.speed || 1.0}
@@ -1281,8 +1281,8 @@ export default function ContentGeneration({
                             <label className="block text-[12px] text-slate-600 mb-1">속도</label>
                             <input
                               type="range"
-                              min="0.5"
-                              max="2"
+                              min="0.7"
+                              max="1.2"
                               step="0.1"
                               className="w-full"
                               value={child.speed || 1.0}

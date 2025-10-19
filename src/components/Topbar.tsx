@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { Settings, Bell, LogOut, User } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Channel } from "../types";
@@ -17,7 +18,7 @@ export default function Topbar({
   loadingChannels
 }: TopbarProps) {
   const { user, logout } = useAuth();
-
+  const navigate = useNavigate();
 
   const handleLogout = async (): Promise<void> => {
     if (window.confirm('로그아웃 하시겠습니까?')) {
@@ -32,6 +33,9 @@ export default function Topbar({
       ch.channelId.toString() === channelId || ch.channelId === channelId
     ) || null;
     setSelectedChannel(channel);
+
+    // 채널 변경 시 대시보드로 리다이렉트
+    navigate('/dashboard');
   };
 
   return (
