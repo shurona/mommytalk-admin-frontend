@@ -25,7 +25,7 @@ export interface GeneratedContent {
   childAudioText: string;
   vocaUrl: string | null;
   diaryUrl: string;
-  status: 'generated' | 'approved';
+  status: boolean; // true: 승인됨(approved), false: 생성됨(generated)
   createdAt: string;
   updatedAt: string;
 }

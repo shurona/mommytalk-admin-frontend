@@ -5,7 +5,6 @@ import type {
   GeneratedContent,
   ContentCountResponse,
   ContentUpdateRequest,
-  ContentTestRequest,
   ContentActionResponse,
   ContentAudioRequest,
   MessageContentAudioResponse
@@ -38,6 +37,19 @@ export const contentGenerationService = {
     return response.data.data;
   },
 
+  // messageType과 레벨로 콘텐츠 조회
+  getContentByLevels: async (
+    channelId: string,
+    messageTypeId: number,
+    childLevel: number,
+    userLevel: number
+  ): Promise<GeneratedContent | null> => {
+    const response = await api.get<ApiResponse<GeneratedContent | null>>(
+      `/v1/channels/${channelId}/contents?type=${messageTypeId}&child=${childLevel}&user=${userLevel}`
+    );
+    return response.data.data;
+  },
+
   // 콘텐츠 내용 수정 (upsert)
   updateContent: async (channelId: string, request: ContentUpdateRequest): Promise<number> => {
     const response = await api.post<ApiResponse<number>>(
@@ -48,10 +60,9 @@ export const contentGenerationService = {
   },
 
   // 테스트 발송
-  testContent: async (channelId: string, request: ContentTestRequest): Promise<ContentActionResponse> => {
+  testContent: async (channelId: string, contentId: number): Promise<ContentActionResponse> => {
     const response = await api.post<ApiResponse<ContentActionResponse>>(
-      `/v1/channels/${channelId}/contents/test`,
-      request
+      `/v1/channels/${channelId}/contents/${contentId}/test`
     );
     return response.data.data;
   },

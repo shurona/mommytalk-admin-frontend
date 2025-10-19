@@ -122,6 +122,9 @@ export default function ContentGeneration({
   /** 9개 레벨별 콘텐츠 생성 상태 */
   const [levelContentInfo, setLevelContentInfo] = useState<MessageTypeContentInfo>({});
 
+  /** 9개 레벨별 승인 상태 (true: 승인됨, false: 생성됨) */
+  const [levelApprovalStatus, setLevelApprovalStatus] = useState<Record<string, boolean>>({});
+
   /** MessageType 상태 관리 */
   const [messageTypeExists, setMessageTypeExists] = useState<boolean>(false);
   const [messageTypeLoading, setMessageTypeLoading] = useState<boolean>(true);
@@ -269,7 +272,7 @@ export default function ContentGeneration({
       setAudioConfig(audio);
       setVocaConfigs(voca);
       setDiaryConfigs(diary);
-      setApprovedKeys(content.status === 'approved' ? new Set([key]) : new Set());
+      setApprovedKeys(content.status ? new Set([key]) : new Set());
 
       // 9개 레벨 상태 다시 조회
       await loadMessageType(selectedChannel.channelId, contentDate);
@@ -295,30 +298,13 @@ export default function ContentGeneration({
       }
     }));
 
-  const resetAudio = (key: string, role: "mom" | "child", baseText: string): void =>
-    setAudioConfig((p) => ({
-      ...p,
-      [key]: {
-        ...p[key],
-        [role]: {
-          ...p[key][role],
-          editableLabel: role === "mom" ? audioButtonLabelDefaultMom : audioButtonLabelDefaultChild,
-          voice: role === "mom" ? VOICES[0].id : VOICES[2].id,
-          speed: 1.0,
-          text: baseText,
-          status: "idle",
-          url: "",
-        },
-      },
-    }));
-
   const updateVoca = (key: string, patch: Partial<VocaConfig>): void =>
     setVocaConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
 
   const updateDiary = (key: string, patch: Partial<DiaryConfig>): void =>
     setDiaryConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
 
-  /** 오디오 생성/미리듣기/버튼에 넣기 */
+  /** 오디오 생성 */
   const generateAudio = async (key: string, role: "mom" | "child"): Promise<void> => {
     if (!selectedChannel || !currentContent) {
       alert("먼저 수정하기 버튼으로 메시지를 저장해주세요.");
@@ -384,37 +370,18 @@ export default function ContentGeneration({
     }
   };
 
-  const attachAudioUrlToButton = (key: string, role: "mom" | "child"): void => {
-    const url = audioConfig?.[key]?.[role]?.url || "";
-    if (!url) {
-      alert("먼저 AI음성 생성으로 URL을 확보해 주세요.");
-      return;
-    }
-    alert("미리보기의 버튼에 오디오 URL이 연결되었습니다.");
-  };
-
   /** 테스트 발송 */
   const testContent = async (key: string, title: string): Promise<void> => {
-    if (!selectedChannel) {
-      alert("채널을 선택해주세요.");
-      return;
-    }
-
-    const messageText = messages?.[key];
-    if (!messageText || messageText.trim() === "") {
-      alert("메시지 내용을 입력해주세요.");
+    if (!selectedChannel || !currentContent) {
+      alert("먼저 수정하기 버튼으로 메시지를 저장해주세요.");
       return;
     }
 
     setIsLoading(true);
     try {
-      const request = {
-        content: messageText
-      };
-
       await contentGenerationService.testContent(
         selectedChannel.channelId,
-        request
+        currentContent.id
       );
       alert(`테스트 발송 완료: ${title}`);
     } catch (error: any) {
@@ -506,10 +473,21 @@ export default function ContentGeneration({
         return next;
       });
 
+      // 승인 성공 시 9개 레벨 상태도 업데이트
+      const levelKey = `${momLevel}_${childLevel}`;
+      setLevelApprovalStatus(prev => ({
+        ...prev,
+        [levelKey]: true
+      }));
+
       alert(`승인 완료: ${title}`);
     } catch (error: any) {
       console.error('승인 실패:', error);
-      alert(error.response?.data?.message || '승인에 실패했습니다.');
+
+      // api.ts 인터셉터에서 변환한 ApiError 구조 처리
+      // ApiError.message에 백엔드 메시지가 담겨있음
+      const errorMessage = error.message || '승인에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -879,54 +857,154 @@ export default function ContentGeneration({
                         className="border border-gray-300 p-0"
                       >
                         <button
-                          onClick={() => {
+                          onClick={async () => {
+                            if (!selectedChannel || !messageTypeId) return;
+
                             setChildLevel(childLv);
                             setMomLevel(userLevel);
 
                             const selectedProduct = "365";
                             const key = `${selectedProduct}|${userLevel}_${childLv}`;
-                            const messageText = hasContent ? contentValue : "";
 
-                            // 메시지 및 UI 상태 설정 (빈 값이어도 표시)
-                            setMessages({ [key]: messageText });
-                            setGroupTargets({ [key]: "전체 사용자" });
+                            try {
+                              // API로 해당 레벨의 콘텐츠 조회
+                              const content = await contentGenerationService.getContentByLevels(
+                                selectedChannel.channelId,
+                                messageTypeId,
+                                childLv,
+                                userLevel
+                              );
 
-                            // 오디오 설정
-                            setAudioConfig({
-                              [key]: {
-                                mom: {
-                                  editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
-                                  editingLabel: false,
-                                  voice: VOICES[0].id,
-                                  speed: 1.0,
-                                  text: messageText,
-                                  status: "idle",
-                                  url: "",
-                                },
-                                child: {
-                                  editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
-                                  editingLabel: false,
-                                  voice: VOICES[2].id,
-                                  speed: 1.0,
-                                  text: messageText,
-                                  status: "idle",
-                                  url: "",
-                                },
+                              if (content) {
+                                // 콘텐츠가 있으면 전체 데이터 설정
+                                setCurrentContent(content);
+                                setMessages({ [key]: content.messageText });
+                                setGroupTargets({ [key]: "전체 사용자" });
+
+                                // 승인 상태 저장
+                                setLevelApprovalStatus(prev => ({
+                                  ...prev,
+                                  [levelKey]: content.status
+                                }));
+
+                                // 오디오 설정 (서버에서 받은 데이터 사용)
+                                setAudioConfig({
+                                  [key]: {
+                                    mom: {
+                                      editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
+                                      editingLabel: false,
+                                      voice: VOICES[0].id,
+                                      speed: 1.0,
+                                      text: content.momAudioText || "",
+                                      status: "idle",
+                                      url: content.momAudioUrl || "",
+                                    },
+                                    child: {
+                                      editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
+                                      editingLabel: false,
+                                      voice: VOICES[2].id,
+                                      speed: 1.0,
+                                      text: content.childAudioText || "",
+                                      status: "idle",
+                                      url: content.childAudioUrl || "",
+                                    },
+                                  }
+                                });
+
+                                // 다이어리 설정
+                                setDiaryConfigs({
+                                  [key]: {
+                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                    url: content.diaryUrl || "",
+                                    editingLabel: false,
+                                    editingUrl: false,
+                                  }
+                                });
+
+                                setVocaConfigs({});
+                                setApprovedKeys(content.status ? new Set([key]) : new Set());
+                              } else {
+                                // 콘텐츠가 없으면 빈 상태로 설정
+                                setCurrentContent(null);
+                                setMessages({ [key]: "" });
+                                setGroupTargets({ [key]: "전체 사용자" });
+
+                                // 오디오 설정 (빈 상태)
+                                setAudioConfig({
+                                  [key]: {
+                                    mom: {
+                                      editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
+                                      editingLabel: false,
+                                      voice: VOICES[0].id,
+                                      speed: 1.0,
+                                      text: "",
+                                      status: "idle",
+                                      url: "",
+                                    },
+                                    child: {
+                                      editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
+                                      editingLabel: false,
+                                      voice: VOICES[2].id,
+                                      speed: 1.0,
+                                      text: "",
+                                      status: "idle",
+                                      url: "",
+                                    },
+                                  }
+                                });
+
+                                // 다이어리 설정 (빈 상태)
+                                setDiaryConfigs({
+                                  [key]: {
+                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                    url: "",
+                                    editingLabel: false,
+                                    editingUrl: false,
+                                  }
+                                });
+
+                                setVocaConfigs({});
+                                setApprovedKeys(new Set());
                               }
-                            });
-
-                            // 다이어리 설정
-                            setDiaryConfigs({
-                              [key]: {
-                                label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
-                                url: DIARY_DEFAULT_URL,
-                                editingLabel: false,
-                                editingUrl: false,
-                              }
-                            });
-
-                            setVocaConfigs({});
-                            setApprovedKeys(new Set());
+                            } catch (error: any) {
+                              console.error('콘텐츠 조회 실패:', error);
+                              // 에러 발생 시에도 빈 상태로 설정
+                              setCurrentContent(null);
+                              setMessages({ [key]: "" });
+                              setGroupTargets({ [key]: "전체 사용자" });
+                              setAudioConfig({
+                                [key]: {
+                                  mom: {
+                                    editableLabel: selectedLanguage === "JPN" ? "ママの発音🔈" : "엄마발음🔈",
+                                    editingLabel: false,
+                                    voice: VOICES[0].id,
+                                    speed: 1.0,
+                                    text: "",
+                                    status: "idle",
+                                    url: "",
+                                  },
+                                  child: {
+                                    editableLabel: selectedLanguage === "JPN" ? "キッズの発音🔈" : "아이발음🔈",
+                                    editingLabel: false,
+                                    voice: VOICES[2].id,
+                                    speed: 1.0,
+                                    text: "",
+                                    status: "idle",
+                                    url: "",
+                                  },
+                                }
+                              });
+                              setDiaryConfigs({
+                                [key]: {
+                                  label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                  url: "",
+                                  editingLabel: false,
+                                  editingUrl: false,
+                                }
+                              });
+                              setVocaConfigs({});
+                              setApprovedKeys(new Set());
+                            }
                           }}
                           className={`w-full h-full px-3 py-3 text-[13px] font-medium transition-colors ${
                             isSelected
@@ -936,11 +1014,16 @@ export default function ContentGeneration({
                               : 'bg-white text-gray-400 hover:bg-gray-50'
                           }`}
                           style={{
-                            border: isSelected
-                              ? 'none'
-                              : hasContent
-                              ? '2px solid #22c55e'
-                              : '2px solid #ef4444',
+                            border: (() => {
+                              const isApproved = levelApprovalStatus[levelKey];
+                              if (hasContent) {
+                                // 콘텐츠가 있으면 승인 상태에 따라 초록/빨강
+                                return isApproved ? '2px solid #22c55e' : '2px solid #ef4444';
+                              } else {
+                                // 콘텐츠가 없으면 빨간색
+                                return '2px solid #ef4444';
+                              }
+                            })(),
                             margin: '-1px'
                           }}
                         >
@@ -1123,19 +1206,6 @@ export default function ContentGeneration({
                           <button onClick={() => previewAudio(mom.url)} className={BTN_NEUTRAL}>
                             미리 듣기
                           </button>
-                          <button
-                            onClick={() => attachAudioUrlToButton(key, "mom")}
-                            className={`${BTN_PRIMARY} col-span-1`}
-                          >
-                            버튼에 넣기
-                          </button>
-                          <button
-                            title="리셋"
-                            onClick={() => resetAudio(key, "mom", text)}
-                            className={`${BTN_SECONDARY} col-span-1`}
-                          >
-                            🔄
-                          </button>
                         </div>
 
                         {mom.status === "success" && (
@@ -1236,19 +1306,6 @@ export default function ContentGeneration({
                           </button>
                           <button onClick={() => previewAudio(child.url)} className={BTN_NEUTRAL}>
                             미리 듣기
-                          </button>
-                          <button
-                            onClick={() => attachAudioUrlToButton(key, "child")}
-                            className={`${BTN_PRIMARY} col-span-1`}
-                          >
-                            버튼에 넣기
-                          </button>
-                          <button
-                            title="리셋"
-                            onClick={() => resetAudio(key, "child", text)}
-                            className={`${BTN_SECONDARY} col-span-1`}
-                          >
-                            🔄
                           </button>
                         </div>
 
