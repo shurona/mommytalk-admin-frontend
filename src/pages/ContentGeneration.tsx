@@ -119,11 +119,8 @@ export default function ContentGeneration({
   const [error, setError] = useState<string>("");
   const [currentContent, setCurrentContent] = useState<GeneratedContent | null>(null);
 
-  /** 9개 레벨별 콘텐츠 생성 상태 */
+  /** 9개 레벨별 콘텐츠 생성 및 승인 상태 */
   const [levelContentInfo, setLevelContentInfo] = useState<MessageTypeContentInfo>({});
-
-  /** 9개 레벨별 승인 상태 (true: 승인됨, false: 생성됨) */
-  const [levelApprovalStatus, setLevelApprovalStatus] = useState<Record<string, boolean>>({});
 
   /** MessageType 상태 관리 */
   const [messageTypeExists, setMessageTypeExists] = useState<boolean>(false);
@@ -473,12 +470,10 @@ export default function ContentGeneration({
         return next;
       });
 
-      // 승인 성공 시 9개 레벨 상태도 업데이트
-      const levelKey = `${momLevel}_${childLevel}`;
-      setLevelApprovalStatus(prev => ({
-        ...prev,
-        [levelKey]: true
-      }));
+      // 승인 성공 시 MessageType 다시 조회하여 9개 레벨 상태 업데이트
+      if (selectedChannel) {
+        await loadMessageType(selectedChannel.channelId, contentDate);
+      }
 
       alert(`승인 완료: ${title}`);
     } catch (error: any) {
@@ -847,8 +842,10 @@ export default function ContentGeneration({
                 </td>
                   {[1, 2, 3].map((childLv) => {
                     const levelKey = `${userLevel}_${childLv}` as keyof MessageTypeContentInfo;
-                    const contentValue = levelContentInfo[levelKey];
-                    const hasContent = contentValue && contentValue.trim() !== '';
+                    const contentStatus = levelContentInfo[levelKey]; // boolean | undefined
+                    const isApproved = contentStatus === true;  // 승인됨
+                    const isGenerated = contentStatus === false; // 생성됨(미승인)
+                    const hasContent = contentStatus !== undefined; // 생성 여부
                     const isSelected = childLevel === childLv && momLevel === userLevel;
 
                     return (
@@ -880,12 +877,6 @@ export default function ContentGeneration({
                                 setCurrentContent(content);
                                 setMessages({ [key]: content.messageText });
                                 setGroupTargets({ [key]: "전체 사용자" });
-
-                                // 승인 상태 저장
-                                setLevelApprovalStatus(prev => ({
-                                  ...prev,
-                                  [levelKey]: content.status
-                                }));
 
                                 // 오디오 설정 (서버에서 받은 데이터 사용)
                                 setAudioConfig({
@@ -1014,16 +1005,9 @@ export default function ContentGeneration({
                               : 'bg-white text-gray-400 hover:bg-gray-50'
                           }`}
                           style={{
-                            border: (() => {
-                              const isApproved = levelApprovalStatus[levelKey];
-                              if (hasContent) {
-                                // 콘텐츠가 있으면 승인 상태에 따라 초록/빨강
-                                return isApproved ? '2px solid #22c55e' : '2px solid #ef4444';
-                              } else {
-                                // 콘텐츠가 없으면 빨간색
-                                return '2px solid #ef4444';
-                              }
-                            })(),
+                            border: isApproved
+                              ? '2px solid #22c55e'  // 승인됨: 초록색
+                              : '2px solid #ef4444', // 생성됨 또는 생성 안됨: 빨간색
                             margin: '-1px'
                           }}
                         >

@@ -1,16 +1,16 @@
 // MessageType 관련 타입 정의
 
-// 9개 레벨별 콘텐츠 정보
+// 9개 레벨별 콘텐츠 정보 (생성 및 승인 여부)
 export interface MessageTypeContentInfo {
-  '1_1'?: string;
-  '1_2'?: string;
-  '1_3'?: string;
-  '2_1'?: string;
-  '2_2'?: string;
-  '2_3'?: string;
-  '3_1'?: string;
-  '3_2'?: string;
-  '3_3'?: string;
+  '1_1'?: boolean; // true: 승인됨, false: 생성됨(미승인), undefined: 생성 안됨
+  '1_2'?: boolean;
+  '1_3'?: boolean;
+  '2_1'?: boolean;
+  '2_2'?: boolean;
+  '2_3'?: boolean;
+  '3_1'?: boolean;
+  '3_2'?: boolean;
+  '3_3'?: boolean;
 }
 
 // MessageType 날짜별 조회 응답
