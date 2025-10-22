@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { contentGenerationService } from "../services/contentGenerationService";
 import { messageTypeService } from "../services/messageTypeService";
 import type { Channel, GeneratedContent, MessageTypeInfoResponse, MessageTypeContentInfo } from "../types";
+import voiceModels from "../config/voiceModels.json";
 
 /** 텍스트 스타일 (가독성 위주) */
 const MSG_STYLE = {
@@ -21,18 +22,23 @@ const PRODUCTS: Product[] = [
   { id: "combo", label: "마미톡 365+마미보카", hasVoca: true },
 ];
 
-/** TTS 보이스 프리셋 (예시) */
+/** TTS 보이스 프리셋 */
 interface Voice {
   id: string;
   name: string;
 }
 
-const VOICES: Voice[] = [
-  { id: "sarah_f", name: "Sarah (여성)" },
-  { id: "olivia_f", name: "Olivia (여성)" },
-  { id: "matt_m", name: "Matt (남성)" },
-  { id: "junko_f", name: "Junko (JP 여성)" },
-];
+// voiceModels.json에서 자동으로 VOICES 생성
+// 형식: {voiceName}_{gender} → "VoiceName (여성/남성)"
+const VOICES: Voice[] = Object.keys(voiceModels).map((key) => {
+  const [voiceName, gender] = key.split('_');
+  const genderLabel = gender === 'f' ? '여성' : gender === 'm' ? '남성' : '';
+  const capitalizedName = voiceName.charAt(0).toUpperCase() + voiceName.slice(1);
+  return {
+    id: key,
+    name: `${capitalizedName} (${genderLabel})`
+  };
+});
 
 /** 버튼 프리셋 */
 const BTN_BASE = "w-full py-2 rounded text-[12px] transition border";
