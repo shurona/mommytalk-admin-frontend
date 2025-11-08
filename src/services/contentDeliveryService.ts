@@ -9,7 +9,9 @@ import {
   DeliveryStatusResponse,
   AvailableDateResponse,
   TimeConfig,
-  UTCTimeConverter
+  UTCTimeConverter,
+  EstimateRecipientsRequest,
+  EstimateRecipientsResponse
 } from '../types';
 
 // ZonedDateTime 생성 유틸리티
@@ -103,6 +105,20 @@ const contentDeliveryService = {
         localDateTime: `${date}T09:00:00`
       }
     ];
+  },
+
+  /**
+   * 예상 발송 대상 수 계산 (중복 제거)
+   * @param channelId - 채널 ID
+   * @param request - 메시지 타겟 설정
+   * @returns Promise<EstimateRecipientsResponse> - 발송 대상 통계
+   */
+  estimateRecipients: async (channelId: ChannelId, request: EstimateRecipientsRequest): Promise<EstimateRecipientsResponse> => {
+    const response = await api.post<ApiResponse<EstimateRecipientsResponse>>(
+      `/v1/channels/${channelId}/user-groups/members/count`,
+      request
+    );
+    return response.data.data;
   },
 
   /**

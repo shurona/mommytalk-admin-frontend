@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { userService } from '../services/userService';
-import { Trash2, Plus, Edit, X } from 'lucide-react';
+import { Trash2, Plus, Edit, X, Search } from 'lucide-react';
 import {
   ChannelUser,
   UserDetail,
@@ -123,15 +123,21 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
     }
   }, [currentPage]);
 
-  // 검색어 변경 시 첫 페이지로 이동하여 검색
-  const handleSearch = (searchQuery: string): void => {
-    setQ(searchQuery);
+  // 검색 실행
+  const handleSearch = (): void => {
     if (currentPage === 0) {
       // 이미 0페이지면 직접 호출
-      loadUsers(0, searchQuery);
+      loadUsers(0, q);
     } else {
       // 0이 아니면 setCurrentPage(0)으로 useEffect 트리거
       setCurrentPage(0);
+    }
+  };
+
+  // 엔터 키 입력 시 검색
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      handleSearch();
     }
   };
 
@@ -399,11 +405,19 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
         <div className="flex items-center space-x-2">
           <input
             className="w-64 border rounded px-3 py-2 text-sm"
-            placeholder="검색 (이름/이메일/전화/ID/상품명)"
+            placeholder="검색 (이름/이메일/전화)"
             value={q}
-            onChange={(e) => handleSearch(e.target.value)}
-            disabled={loading}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyPress={handleKeyPress}
           />
+          <button
+            onClick={handleSearch}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+          >
+            <Search className="h-4 w-4" />
+            <span>검색</span>
+          </button>
         </div>
       </div>
 

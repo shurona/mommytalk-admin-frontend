@@ -92,6 +92,20 @@ export interface DeliveryStatusResponse {
   logs: MessageLog[];
 }
 
+// 예상 발송 대상 계산 요청
+export interface EstimateRecipientsRequest {
+  messageTarget: 'all' | 'group';
+  includeGroupIds: GroupId[];  // 포함할 그룹 ID들 (AUTO_ACTIVE + CUSTOM)
+  excludeGroupIds: GroupId[];  // 제외할 그룹 ID들
+}
+
+// 예상 발송 대상 계산 응답
+export interface EstimateRecipientsResponse {
+  totalRecipients: number;  // 중복 제거된 실제 발송 대상 수
+  includedCount: number;    // 포함 그룹의 총 친구 수 (중복 포함)
+  excludedCount: number;    // 제외 그룹의 총 친구 수 (중복 포함)
+}
+
 // UTC 시간 변환 유틸 타입
 export interface UTCTimeConverter {
   localToUTC: (localTime: string, timezone: string) => string;

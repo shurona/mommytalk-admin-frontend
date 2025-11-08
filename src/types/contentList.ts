@@ -13,8 +13,11 @@ export interface ContentItem {
   id: number;
   theme: string;
   status: ContentStatus;
-  createdAt: string;        // 등록일 (ISO 8601)
-  deliveryDate: string;    // 발송 예정일
+  createdAt: string;        // 등록일 (LocalDateTime)
+  deliveryDate: string;     // 발송일 (LocalDateTime)
+  totalCount: number;       // 메시지 전체 건수
+  successCount: number;     // 성공 메시지 건수
+  failCount: number;        // 실패 메시지 건수
 }
 
 // 콘텐츠 정보 (레벨별 메시지)

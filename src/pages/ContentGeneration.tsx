@@ -447,10 +447,10 @@ export default function ContentGeneration({
       // 9개 레벨 상태 다시 조회
       await loadMessageType(selectedChannel.channelId, contentDate);
 
-      alert(`수정 완료: ${title}`);
+      alert(`메시지 생성 완료: ${title}`);
     } catch (error: any) {
-      console.error('수정 실패:', error);
-      alert(error.response?.data?.message || '수정에 실패했습니다.');
+      console.error('메시지 생성 실패:', error);
+      alert(error.response?.data?.message || '메시지 생성에 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -1408,7 +1408,7 @@ export default function ContentGeneration({
                             className={BTN_SECONDARY}
                             disabled={isLoading}
                           >
-                            수정하기
+                            메시지 생성하기
                           </button>
 
                           <button
@@ -1430,7 +1430,7 @@ export default function ContentGeneration({
                               style={{ backgroundColor: "#F65159", borderColor: "#F65159" }}
                               disabled={isLoading}
                             >
-                              승인하기
+                              생성 메시지 등록하기
                             </button>
                           )}
                         </div>

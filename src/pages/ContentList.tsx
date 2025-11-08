@@ -101,13 +101,22 @@ export default function ContentList({ selectedChannel }: ContentListProps) {
     loadContentList({ page: 0 });
   };
 
-  // 날짜 포맷팅
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('ko-KR', {
+  // LocalDateTime 포맷팅 (날짜 + 시간)
+  const formatDateTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const dateStr = date.toLocaleDateString('ko-KR', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
     }).replace(/\. /g, '.').replace(/\.$/, '');
+
+    const timeStr = date.toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    return `${dateStr} ${timeStr}`;
   };
 
   if (!selectedChannel) {
@@ -193,7 +202,11 @@ export default function ContentList({ selectedChannel }: ContentListProps) {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">번호</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">등록일</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">발송일</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">주제</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">전체</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">성공</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">실패</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">액션</th>
                 </tr>
@@ -201,7 +214,7 @@ export default function ContentList({ selectedChannel }: ContentListProps) {
               <tbody className="bg-white divide-y divide-gray-200">
                 {contentList.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                       콘텐츠가 없습니다.
                     </td>
                   </tr>
@@ -210,9 +223,21 @@ export default function ContentList({ selectedChannel }: ContentListProps) {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatDate(item.createdAt)}
+                        {formatDateTime(item.createdAt)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatDateTime(item.deliveryDate)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.theme}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-700 font-medium">
+                        {item.totalCount}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-green-600 font-medium">
+                        {item.successCount}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-red-600 font-medium">
+                        {item.failCount}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded-full ${statusStyles[item.status]}`}>
                           {statusLabels[item.status]}

@@ -32,7 +32,13 @@ export default function Topbar({
     const channel = channels.find(ch =>
       ch.channelId.toString() === channelId || ch.channelId === channelId
     ) || null;
+
     setSelectedChannel(channel);
+
+    // localStorage에 선택한 채널 ID 저장
+    if (channel) {
+      localStorage.setItem('selectedChannelId', channel.channelId.toString());
+    }
 
     // 채널 변경 시 대시보드로 리다이렉트
     navigate('/dashboard');

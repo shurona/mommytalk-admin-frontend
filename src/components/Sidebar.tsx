@@ -33,8 +33,6 @@ export default function Sidebar() {
         { id: "content-group-settings", label: "콘텐츠 발송 및 그룹 설정" },
         { id: "prompt-management", label: "프롬프트 관리" },
         { id: "test-user-management", label: "테스트 유저 관리" },
-        { id: "welcome-message", label: "웰컴 메시지 (별도)" },
-        { id: "notification-message", label: "알림톡 메시지 (별도)" },
       ],
     },
     {
@@ -43,7 +41,6 @@ export default function Sidebar() {
       label: "회원 관리",
       submenu: [
         { id: "all-users", label: "전체 회원" },
-        { id: "purchasers", label: "구매자 관리" },
         { id: "service-groups", label: "회원 그룹 관리" },
       ],
     },
@@ -53,17 +50,6 @@ export default function Sidebar() {
       label: "판매관리",
       submenu: [
         { id: "order-list", label: "주문 목록" },
-        { id: "order-management", label: "주문 관리" },
-        { id: "purchase-event-settings", label: "구매 이벤트 수신 설정" },
-      ],
-    },
-    {
-      id: "test",
-      icon: FileText,
-      label: "테스트",
-      submenu: [
-        { id: "line-login-test", label: "LINE 로그인 (프론트 방식)" },
-        { id: "line-sdk-test", label: "LINE 로그인 (서버 통합)" },
       ],
     },
   ];

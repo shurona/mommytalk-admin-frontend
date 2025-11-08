@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, Clock, Users, Send, AlertCircle } from "lucide-react";
-import { Channel, UserGroup, UserGroupType, GroupOption, Message, GroupId, AvailableDateResponse } from "../types";
+import { Channel, UserGroup, UserGroupType, GroupOption, Message, GroupId, AvailableDateResponse, EstimateRecipientsResponse } from "../types";
 import { userGroupService } from "../services/userGroupService";
 import { contentDeliveryService } from "../services/contentDeliveryService";
 
@@ -24,6 +24,10 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   const [messageTarget, setMessageTarget] = useState<'all' | 'group'>('all');
   const [includedGroupIds, setIncludedGroupIds] = useState<GroupId[]>([]);
   const [excludedGroupIds, setExcludedGroupIds] = useState<GroupId[]>([]);
+
+  // 예상 발송 대상 상태
+  const [expectedRecipients, setExpectedRecipients] = useState<number>(0);
+  const [recipientStats, setRecipientStats] = useState<EstimateRecipientsResponse | null>(null);
 
   // 메시지 정보
   const [selectedDateMessages, setSelectedDateMessages] = useState<Message[]>([]);
@@ -93,19 +97,36 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
     }));
   };
 
-  // 그룹 선택 핸들러
-  // AUTO_ACTIVE: 라디오 버튼 (단일 선택) - 기존 선택 제거하고 새로 설정
-  const handleAutoActiveGroupChange = (groupId: GroupId) => {
-    // 기존 AUTO_ACTIVE 그룹 제거하고 새로운 그룹만 추가
-    const customGroups = includedGroupIds.filter(id => {
-      const group = userGroups.find(g => g.id === id);
-      return group?.type === UserGroupType.CUSTOM;
-    });
-    setIncludedGroupIds([groupId, ...customGroups]);
-  };
+  // 예상 발송 대상 계산 (API 호출)
+  useEffect(() => {
+    const fetchRecipientCount = async () => {
+      if (!selectedChannel) return;
 
-  // CUSTOM: 체크박스 (다중 선택) - 기존 선택 유지
-  const handleCustomGroupChange = (groupId: GroupId, checked: boolean) => {
+      try {
+        const response = await contentDeliveryService.estimateRecipients(
+          selectedChannel.channelId,
+          {
+            messageTarget: messageTarget,
+            includeGroupIds: includedGroupIds,
+            excludeGroupIds: excludedGroupIds
+          }
+        );
+
+        setExpectedRecipients(response.totalRecipients);
+        setRecipientStats(response);
+      } catch (error) {
+        console.error('[예상 발송 대상 조회 실패]', error);
+        setExpectedRecipients(0);
+        setRecipientStats(null);
+      }
+    };
+
+    fetchRecipientCount();
+  }, [selectedChannel, messageTarget, includedGroupIds, excludedGroupIds]);
+
+  // 그룹 선택 핸들러
+  // AUTO_ACTIVE & CUSTOM: 체크박스 (다중 선택)
+  const handleIncludeGroupChange = (groupId: GroupId, checked: boolean) => {
     if (checked) {
       setIncludedGroupIds(prev => [...prev, groupId]);
     } else {
@@ -128,14 +149,9 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
 
     setLoading(true);
     try {
-      console.log('=== 발송 예약 디버깅 ===');
-      console.log('includedGroupIds:', includedGroupIds);
-      console.log('userGroups:', userGroups);
-
       // AUTO_ACTIVE 그룹 ID 추출 (단일)
       const autoActiveId = includedGroupIds.find(id => {
         const group = userGroups.find(g => g.id === id);
-        console.log(`ID ${id} 체크 - 그룹:`, group, '타입:', group?.type);
         return group?.type === UserGroupType.AUTO_ACTIVE;
       }) || null;
 
@@ -145,13 +161,10 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
         return group?.type === UserGroupType.CUSTOM;
       });
 
-      console.log('autoActiveId:', autoActiveId);
-      console.log('customIds:', customIds);
-
       const request = {
         deliveryDate,
         deliveryTime: `${deliveryHour}:${deliveryMinute}`,
-        messageTarget: messageTarget as 'all' | 'group',
+        messageTarget: messageTarget,
         includeGroupId: messageTarget === 'all' ? null : autoActiveId,
         includeCustomGroup: messageTarget === 'all' ? [] : customIds,
         excludeGroup: excludedGroupIds
@@ -345,15 +358,20 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                     groupOptions
                       .filter(option => option.canExclude)
                       .map(option => (
-                        <label key={`exclude-all-${option.group.id}`} className="flex items-center space-x-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={excludedGroupIds.includes(option.group.id)}
-                            onChange={(e) => handleExcludeGroupChange(option.group.id, e.target.checked)}
-                            className="w-3 h-3 text-red-600"
-                          />
-                          <span className="flex-1">
-                            {option.group.title}
+                        <label key={`exclude-all-${option.group.id}`} className="flex items-center justify-between space-x-2 text-xs">
+                          <div className="flex items-center space-x-2 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={excludedGroupIds.includes(option.group.id)}
+                              onChange={(e) => handleExcludeGroupChange(option.group.id, e.target.checked)}
+                              className="w-3 h-3 text-red-600"
+                            />
+                            <span>
+                              {option.group.title}
+                            </span>
+                          </div>
+                          <span className="text-gray-500">
+                            {option.group.friendCount}명
                           </span>
                         </label>
                       ))
@@ -377,20 +395,24 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                     <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
                   ) : (
                     <>
-                      {/* AUTO_ACTIVE 그룹 - 라디오 버튼 */}
+                      {/* AUTO_ACTIVE 그룹 - 체크박스 */}
                       {groupOptions
                         .filter(option => option.group.type === UserGroupType.AUTO_ACTIVE)
                         .map(option => (
-                          <label key={`include-auto-${option.group.id}`} className="flex items-center space-x-2 text-xs">
-                            <input
-                              type="radio"
-                              name="autoActiveGroup"
-                              checked={includedGroupIds.includes(option.group.id)}
-                              onChange={() => handleAutoActiveGroupChange(option.group.id)}
-                              className="w-3 h-3 text-blue-600"
-                            />
-                            <span className="flex-1">
-                              {option.group.title}
+                          <label key={`include-auto-${option.group.id}`} className="flex items-center justify-between space-x-2 text-xs">
+                            <div className="flex items-center space-x-2 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={includedGroupIds.includes(option.group.id)}
+                                onChange={(e) => handleIncludeGroupChange(option.group.id, e.target.checked)}
+                                className="w-3 h-3 text-blue-600"
+                              />
+                              <span>
+                                {option.group.title}
+                              </span>
+                            </div>
+                            <span className="text-gray-500">
+                              {option.group.friendCount}명
                             </span>
                           </label>
                         ))}
@@ -399,15 +421,20 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                       {groupOptions
                         .filter(option => option.group.type === UserGroupType.CUSTOM)
                         .map(option => (
-                          <label key={`include-custom-${option.group.id}`} className="flex items-center space-x-2 text-xs">
-                            <input
-                              type="checkbox"
-                              checked={includedGroupIds.includes(option.group.id)}
-                              onChange={(e) => handleCustomGroupChange(option.group.id, e.target.checked)}
-                              className="w-3 h-3 text-blue-600"
-                            />
-                            <span className="flex-1">
-                              {option.group.title}
+                          <label key={`include-custom-${option.group.id}`} className="flex items-center justify-between space-x-2 text-xs">
+                            <div className="flex items-center space-x-2 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={includedGroupIds.includes(option.group.id)}
+                                onChange={(e) => handleIncludeGroupChange(option.group.id, e.target.checked)}
+                                className="w-3 h-3 text-blue-600"
+                              />
+                              <span>
+                                {option.group.title}
+                              </span>
+                            </div>
+                            <span className="text-gray-500">
+                              {option.group.friendCount}명
                             </span>
                           </label>
                         ))}
@@ -430,15 +457,20 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                     groupOptions
                       .filter(option => option.canExclude)
                       .map(option => (
-                        <label key={`exclude-${option.group.id}`} className="flex items-center space-x-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={excludedGroupIds.includes(option.group.id)}
-                            onChange={(e) => handleExcludeGroupChange(option.group.id, e.target.checked)}
-                            className="w-3 h-3 text-red-600"
-                          />
-                          <span className="flex-1">
-                            {option.group.title}
+                        <label key={`exclude-${option.group.id}`} className="flex items-center justify-between space-x-2 text-xs">
+                          <div className="flex items-center space-x-2 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={excludedGroupIds.includes(option.group.id)}
+                              onChange={(e) => handleExcludeGroupChange(option.group.id, e.target.checked)}
+                              className="w-3 h-3 text-red-600"
+                            />
+                            <span>
+                              {option.group.title}
+                            </span>
+                          </div>
+                          <span className="text-gray-500">
+                            {option.group.friendCount}명
                           </span>
                         </label>
                       ))
@@ -453,39 +485,72 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
         </div>
       </div>
 
-      {/* 하단: 발송 예약 버튼 */}
-      <div className="mt-6 flex justify-end">
-        {(() => {
-          const selectedDateInfo = availableDates.find(d => d.date === deliveryDate);
+      {/* 하단: 예상 발송 대상 및 발송 예약 버튼 */}
+      <div className="mt-6">
+        {/* 예상 발송 대상 표시 */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">예상 발송 대상</span>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-blue-600">
+                {expectedRecipients.toLocaleString()}명
+              </div>
+              <div className="text-xs text-blue-700 mt-1">
+                {messageTarget === 'all' ? '전체 친구 발송' : '선택한 그룹 발송'}
+              </div>
+            </div>
+          </div>
 
-        
-          const messageCount = selectedDateInfo?.messageCount || 0;
-          const isDisabled = loading || !deliveryDate || messageCount === 0;
+          {/* 상세 정보 */}
+          {recipientStats && (
+            <div className="mt-3 pt-3 border-t border-blue-200">
+              <div className="grid grid-cols-2 gap-2 text-xs text-blue-800">
+                <div>
+                  {messageTarget === 'all' ? '전체 친구' : '포함 그룹'}: {recipientStats.includedCount.toLocaleString()}명
+                </div>
+                <div>
+                  제외: {recipientStats.excludedCount.toLocaleString()}명
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
-          return (
-            <button
-              onClick={handleScheduleDelivery}
-              disabled={isDisabled}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium ${
-                isDisabled
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>처리중...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  <span>발송 예약하기</span>
-                </>
-              )}
-            </button>
-          );
-        })()}
+        {/* 발송 예약 버튼 */}
+        <div className="flex justify-end">
+          {(() => {
+            const selectedDateInfo = availableDates.find(d => d.date === deliveryDate);
+            const messageCount = selectedDateInfo?.messageCount || 0;
+            const isDisabled = loading || !deliveryDate || messageCount === 0 || expectedRecipients === 0;
+
+            return (
+              <button
+                onClick={handleScheduleDelivery}
+                disabled={isDisabled}
+                className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium ${
+                  isDisabled
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>처리중...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    <span>발송 예약하기 ({expectedRecipients.toLocaleString()}명)</span>
+                  </>
+                )}
+              </button>
+            );
+          })()}
+        </div>
       </div>
     </div>
   );

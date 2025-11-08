@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -15,15 +15,8 @@ import ContentGroupSettings from "./pages/ContentGroupSettings";
 import PromptManagement from "./pages/PromptManagement";
 import TestUserManagement from "./pages/TestUserManagement";
 import AllUsers from "./pages/AllUsers";
-import Purchasers from "./pages/Purchasers";
 import ServiceGroups from "./pages/ServiceGroups";
 import OrderList from "./pages/OrderList";
-import OrderManagement from "./pages/OrderManagement";
-import PurchaseEventSettings from "./pages/PurchaseEventSettings";
-import LineLoginTest from "./pages/LineLoginTest";
-import LineOAuth from "./pages/LineOAuth";
-import LineSDKTest from "./pages/LineSDKTest";
-import LineServerCallback from "./pages/LineServerCallback";
 
 function AdminApp(): JSX.Element {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -38,9 +31,25 @@ function AdminApp(): JSX.Element {
         const channelList = await channelService.getChannels();
         setChannels(channelList);
 
-        // 첫 번째 채널을 기본 선택
+        // localStorage에서 마지막 선택한 채널 ID 가져오기
+        const savedChannelId = localStorage.getItem('selectedChannelId');
+
+        if (savedChannelId) {
+          // 저장된 채널 ID가 있으면 해당 채널 선택
+          const savedChannel = channelList.find(
+            ch => ch.channelId.toString() === savedChannelId
+          );
+          if (savedChannel) {
+            setSelectedChannel(savedChannel);
+            return;
+          }
+        }
+
+        // 저장된 채널이 없거나 찾지 못하면 첫 번째 채널 선택
         if (channelList && channelList.length > 0) {
-          setSelectedChannel(channelList[0]);
+          setSelectedChannel(channelList[1]);
+          // 첫 번째 채널도 localStorage에 저장
+          localStorage.setItem('selectedChannelId', channelList[0].channelId.toString());
         }
       } catch (error) {
         console.error('Failed to load channels:', error);
@@ -146,16 +155,7 @@ function AdminApp(): JSX.Element {
             } />
 
             {/* 나머지 페이지들 */}
-            <Route path="/purchasers" element={<Purchasers />} />
             <Route path="/order-list" element={<OrderList />} />
-            <Route path="/order-management" element={<OrderManagement />} />
-            <Route path="/purchase-event-settings" element={<PurchaseEventSettings />} />
-
-            {/* LINE 관련 테스트 페이지들 */}
-            <Route path="/line-login-test" element={<LineLoginTest />} />
-            <Route path="/line-oauth" element={<LineOAuth />} />
-            <Route path="/line-sdk-test" element={<LineSDKTest />} />
-            <Route path="/line-server-callback" element={<LineServerCallback />} />
 
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
