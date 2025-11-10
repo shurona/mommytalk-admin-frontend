@@ -36,7 +36,7 @@ export interface ContentDeliveryRequest {
   messageTarget: 'all' | 'group';
   includeGroupId: GroupId | null; // 포함할 AUTO_ACTIVE 그룹 ID (단일, nullable)
   includeCustomGroup: GroupId[]; // 포함할 CUSTOM 그룹 ID들 (배열)
-  excludeGroup: GroupId[]; // 제외할 그룹 ID들 (Long 배열)
+  excludeGroup: GroupId[]; // 제외할 그룹 ID들
 }
 
 // 메시지 타겟 설정

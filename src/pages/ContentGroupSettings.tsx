@@ -125,8 +125,18 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
   }, [selectedChannel, messageTarget, includedGroupIds, excludedGroupIds]);
 
   // 그룹 선택 핸들러
-  // AUTO_ACTIVE & CUSTOM: 체크박스 (다중 선택)
-  const handleIncludeGroupChange = (groupId: GroupId, checked: boolean) => {
+  // AUTO_ACTIVE: 라디오 버튼 (단일 선택) - 기존 선택 제거하고 새로 설정
+  const handleAutoActiveGroupChange = (groupId: GroupId) => {
+    // 기존 AUTO_ACTIVE 그룹 제거하고 새로운 그룹만 추가
+    const customGroups = includedGroupIds.filter(id => {
+      const group = userGroups.find(g => g.id === id);
+      return group?.type === UserGroupType.CUSTOM;
+    });
+    setIncludedGroupIds([groupId, ...customGroups]);
+  };
+
+  // CUSTOM: 체크박스 (다중 선택) - 기존 선택 유지
+  const handleCustomGroupChange = (groupId: GroupId, checked: boolean) => {
     if (checked) {
       setIncludedGroupIds(prev => [...prev, groupId]);
     } else {
@@ -170,7 +180,16 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
         excludeGroup: excludedGroupIds
       };
 
-      console.log('최종 request:', request);
+      console.log('[발송 예약 Request]', {
+        deliveryDate,
+        deliveryTime: `${deliveryHour}:${deliveryMinute}`,
+        messageTarget,
+        includedGroupIds,
+        excludedGroupIds,
+        autoActiveId,
+        customIds,
+        request
+      });
 
       await contentDeliveryService.scheduleContentDelivery(selectedChannel.channelId, request);
 
@@ -371,7 +390,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                             </span>
                           </div>
                           <span className="text-gray-500">
-                            {option.group.friendCount}명
+                            {option.group.memberCount}명
                           </span>
                         </label>
                       ))
@@ -395,16 +414,17 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                     <p className="text-xs text-gray-500 p-2">그룹을 불러오는 중...</p>
                   ) : (
                     <>
-                      {/* AUTO_ACTIVE 그룹 - 체크박스 */}
+                      {/* AUTO_ACTIVE 그룹 - 라디오 버튼 */}
                       {groupOptions
                         .filter(option => option.group.type === UserGroupType.AUTO_ACTIVE)
                         .map(option => (
                           <label key={`include-auto-${option.group.id}`} className="flex items-center justify-between space-x-2 text-xs">
                             <div className="flex items-center space-x-2 flex-1">
                               <input
-                                type="checkbox"
+                                type="radio"
+                                name="autoActiveGroup"
                                 checked={includedGroupIds.includes(option.group.id)}
-                                onChange={(e) => handleIncludeGroupChange(option.group.id, e.target.checked)}
+                                onChange={() => handleAutoActiveGroupChange(option.group.id)}
                                 className="w-3 h-3 text-blue-600"
                               />
                               <span>
@@ -412,7 +432,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                               </span>
                             </div>
                             <span className="text-gray-500">
-                              {option.group.friendCount}명
+                              {option.group.memberCount}명
                             </span>
                           </label>
                         ))}
@@ -426,7 +446,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                               <input
                                 type="checkbox"
                                 checked={includedGroupIds.includes(option.group.id)}
-                                onChange={(e) => handleIncludeGroupChange(option.group.id, e.target.checked)}
+                                onChange={(e) => handleCustomGroupChange(option.group.id, e.target.checked)}
                                 className="w-3 h-3 text-blue-600"
                               />
                               <span>
@@ -434,7 +454,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                               </span>
                             </div>
                             <span className="text-gray-500">
-                              {option.group.friendCount}명
+                              {option.group.memberCount}명
                             </span>
                           </label>
                         ))}
@@ -470,7 +490,7 @@ export default function ContentGroupSettings({ selectedChannel }: ContentGroupSe
                             </span>
                           </div>
                           <span className="text-gray-500">
-                            {option.group.friendCount}명
+                            {option.group.memberCount}명
                           </span>
                         </label>
                       ))
