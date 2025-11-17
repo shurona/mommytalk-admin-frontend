@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 import { userGroupService } from "../services/userGroupService";
 import {
@@ -13,6 +14,9 @@ import {
 } from "../types";
 
 export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
+  const navigate = useNavigate();
+  const { groupId } = useParams<{ groupId?: string }>();
+
   const [autoGroups, setAutoGroups] = useState<UserGroup[]>([]);
   const [customGroups, setCustomGroups] = useState<UserGroup[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -23,7 +27,10 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   const [customTotalPages, setCustomTotalPages] = useState<number>(0);
   const [customPageSize, setCustomPageSize] = useState<number>(50);
 
-  const [view, setView] = useState<GroupViewState>({ mode: "list", id: null });
+  // URL 기반으로 view 상태 결정
+  const view: GroupViewState = groupId
+    ? { mode: "detail", id: Number(groupId) }
+    : { mode: "list", id: null };
   const [newTitle, setNewTitle] = useState<string>("");
   const [editTitle, setEditTitle] = useState<string>("");
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
@@ -87,6 +94,23 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
     loadUserGroups();
   }, [selectedChannel?.channelId]);
 
+  // URL의 groupId가 변경될 때 상세 정보 로드
+  useEffect(() => {
+    if (groupId && view.mode === 'detail') {
+      const id = Number(groupId);
+      loadGroupDetail(id);
+
+      const g = byId(id);
+      if (g && g.type === UserGroupType.CUSTOM) {
+        setEditTitle(g.title);
+        setIsEditingTitle(false);
+      } else {
+        setEditTitle("");
+        setIsEditingTitle(false);
+      }
+    }
+  }, [groupId, autoGroups, customGroups]);
+
   const allGroups = useMemo(() => [...autoGroups, ...customGroups], [autoGroups, customGroups]);
   const byId = (id: GroupId): UserGroup | null => allGroups.find((g) => g.id === id) || null;
 
@@ -123,20 +147,14 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
   };
 
   const openDetail = async (id: GroupId): Promise<void> => {
-    setView({ mode: "detail", id });
-    await loadGroupDetail(id);
-
-    const g = byId(id);
-    if (g && g.type === UserGroupType.CUSTOM) {
-      setEditTitle(g.title);
-      setIsEditingTitle(false);
-    } else {
-      setEditTitle("");
-      setIsEditingTitle(false);
-    }
+    // URL을 변경하여 상세 페이지로 이동
+    navigate(`/service-groups/${id}`);
   };
 
-  const backToList = (): void => setView({ mode: "list", id: null });
+  const backToList = (): void => {
+    // URL을 변경하여 목록 페이지로 이동
+    navigate('/service-groups');
+  };
 
   /** 커스텀 그룹 생성 (상품과 무관) */
   const createCustomGroup = async (): Promise<void> => {
@@ -600,12 +618,14 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
           </button>
           {titleBlock}
         </div>
-        {/* 그룹에 사용자 추가 (우측 상단) */}
-        <div className="flex space-x-2">
-          <button onClick={() => setShowAddUsersModal(true)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
-            그룹에 사용자 추가
-          </button>
-        </div>
+        {/* 그룹에 사용자 추가 (우측 상단) - AUTO_ENDED 그룹에서는 숨김 */}
+        {g.type !== UserGroupType.AUTO_ENDED && (
+          <div className="flex space-x-2">
+            <button onClick={() => setShowAddUsersModal(true)} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">
+              그룹에 사용자 추가
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 그룹 정보 */}
@@ -698,9 +718,12 @@ export default function ServiceGroups({ selectedChannel }: ServiceGroupsProps) {
                   </td>
                   <td className="px-4 py-2 text-sm whitespace-nowrap">{new Date(m.registeredAt).toLocaleString()}</td>
                   <td className="px-4 py-2 text-sm">
-                    <button onClick={() => removeFromGroup(g.id, m.userId)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
-                      제거
-                    </button>
+                    {/* 자동 그룹(AUTO_ACTIVE, AUTO_ENDED)에서는 제거 버튼 숨김 */}
+                    {g.type === UserGroupType.CUSTOM && (
+                      <button onClick={() => removeFromGroup(g.id, m.userId)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs">
+                        제거
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

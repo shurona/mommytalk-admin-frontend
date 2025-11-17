@@ -7,7 +7,11 @@ import {
   ChannelId,
   UserId,
   ApiResponse,
-  PageResponseDto
+  PageResponseDto,
+  Entitlement,
+  UserEntitlement,
+  AddUserEntitlementRequest,
+  UpdateUserEntitlementRequest
 } from '../types';
 
 // 사용자 수정 요청 타입
@@ -148,6 +152,86 @@ export const userService = {
 
     // 에러 발생 시
     throw new Error(response.data.message || '이용권 삭제에 실패했습니다.');
+  },
+
+  // ========== 새로운 상품권 관리 API ==========
+
+  /**
+   * 1️⃣ 상품권 목록 조회 (드롭다운용)
+   * @param {ChannelId} channelId - 채널 ID
+   * @returns {Promise<Entitlement[]>} 상품권 목록
+   */
+  async getEntitlements(channelId: ChannelId): Promise<Entitlement[]> {
+    const response = await api.get<ApiResponse<Entitlement[]>>(
+      `/v1/channels/${channelId}/entitlements`
+    );
+
+    if (response.data.message === 'Success' && response.data.data) {
+      return response.data.data;
+    }
+
+    throw new Error(response.data.message || '상품권 목록을 불러올 수 없습니다.');
+  },
+
+  /**
+   * 2️⃣ 유저 상품권 추가
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {AddUserEntitlementRequest} request - 유저 상품권 추가 요청
+   * @returns {Promise<number>} 생성된 UserEntitlement ID
+   */
+  async addUserEntitlement(channelId: ChannelId, request: AddUserEntitlementRequest): Promise<number> {
+    const response = await api.post<ApiResponse<number>>(
+      `/v1/channels/${channelId}/user-entitlements`,
+      request
+    );
+
+    if (response.data.message === 'Success' && response.data.data) {
+      return response.data.data;
+    }
+
+    throw new Error(response.data.message || '유저 상품권 추가에 실패했습니다.');
+  },
+
+  /**
+   * 3️⃣ 유저 상품권 수정
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {number} userEntitlementId - UserEntitlement ID
+   * @param {UpdateUserEntitlementRequest} request - 유저 상품권 수정 요청
+   * @returns {Promise<string>} 성공 메시지
+   */
+  async updateUserEntitlementById(
+    channelId: ChannelId,
+    userEntitlementId: number,
+    request: UpdateUserEntitlementRequest
+  ): Promise<string> {
+    const response = await api.patch<ApiResponse<string>>(
+      `/v1/channels/${channelId}/user-entitlements/${userEntitlementId}`,
+      request
+    );
+
+    if (response.data.message === 'Success') {
+      return response.data.data || 'success';
+    }
+
+    throw new Error(response.data.message || '유저 상품권 수정에 실패했습니다.');
+  },
+
+  /**
+   * 4️⃣ 유저의 상품권 목록 조회
+   * @param {ChannelId} channelId - 채널 ID
+   * @param {UserId} userId - 유저 ID
+   * @returns {Promise<UserEntitlement[]>} 유저 상품권 목록
+   */
+  async getUserEntitlements(channelId: ChannelId, userId: UserId): Promise<UserEntitlement[]> {
+    const response = await api.get<ApiResponse<UserEntitlement[]>>(
+      `/v1/channels/${channelId}/user-entitlements/users/${userId}`
+    );
+
+    if (response.data.message === 'Success' && response.data.data) {
+      return response.data.data;
+    }
+
+    throw new Error(response.data.message || '유저 상품권 목록을 불러올 수 없습니다.');
   }
 };
 

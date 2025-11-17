@@ -14,12 +14,10 @@ const MSG_STYLE = {
 interface Product {
   id: string;
   label: string;
-  hasVoca: boolean;
 }
 
 const PRODUCTS: Product[] = [
-  { id: "365", label: "마미톡 365", hasVoca: false },
-  { id: "combo", label: "마미톡 365+마미보카", hasVoca: true },
+  { id: "365", label: "마미톡 365" },
 ];
 
 /** TTS 보이스 프리셋 */
@@ -63,15 +61,8 @@ interface AudioConfig {
   child: AudioSettings;
 }
 
-/** 보카 설정 인터페이스 */
-interface VocaConfig {
-  label: string;
-  editingLabel: boolean;
-  url: string;
-}
-
-/** 다이어리 설정 인터페이스 */
-interface DiaryConfig {
+/** 마미 보카 설정 인터페이스 */
+interface MommyVocaConfig {
   label: string;
   url: string;
   editingLabel: boolean;
@@ -84,7 +75,6 @@ interface ContentRow {
   key: string;
   productId: string;
   productLabel: string;
-  hasVoca: boolean;
   child: number;
   mom: number;
   text: string;
@@ -104,10 +94,9 @@ export default function ContentGeneration({
   const isJP = country === "JPN";
   const audioButtonLabelDefaultMom = isJP ? "ママの発音🔈" : "엄마발음🔈";
   const audioButtonLabelDefaultChild = isJP ? "キッズの発音🔈" : "아이발음🔈";
-  const vocaDefaultLabel = isJP ? "デジタルフラッシュカード" : "마미보카📩";
-  const diaryDefaultLabel = isJP ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️";
+  const mommyVocaDefaultLabel = isJP ? "今日の一文を作る✏️" : "마미 보카";
   const audioGenerateLabel = isJP ? "AI音声生成" : "AI음성 생성";
-  const DIARY_DEFAULT_URL = "https://mamitalk.example.com/diary";
+  const MOMMYVOCA_DEFAULT_URL = "https://mamitalk.example.com/diary";
 
   const [contentTheme, setContentTheme] = useState<string>("");
   const [contentContext, setContentContext] = useState<string>("");
@@ -141,10 +130,9 @@ export default function ContentGeneration({
   const [, setGroupTargets] = useState<Record<string, string>>({});
   const [approvedKeys, setApprovedKeys] = useState<Set<string>>(new Set());
 
-  /** 오디오(엄마/아이) 및 부가 버튼(보카/다이어리) 상태 */
+  /** 오디오(엄마/아이) 및 마미보카 URL 상태 */
   const [audioConfig, setAudioConfig] = useState<Record<string, AudioConfig>>({});
-  const [vocaConfigs, setVocaConfigs] = useState<Record<string, VocaConfig>>({});
-  const [diaryConfigs, setDiaryConfigs] = useState<Record<string, DiaryConfig>>({});
+  const [mommyVocaConfigs, setMommyVocaConfigs] = useState<Record<string, MommyVocaConfig>>({});
 
   // MessageType 조회 함수 (9개 레벨 contentInfo 포함)
   const loadMessageType = async (channelId: string, date: string): Promise<void> => {
@@ -252,19 +240,10 @@ export default function ContentGeneration({
         }
       };
 
-      const voca: Record<string, VocaConfig> = {};
-      if (selectedProductObj?.hasVoca && content.vocaUrl) {
-        voca[key] = {
-          label: selectedLanguage === "JPN" ? "デジタルフラッシュカード" : "마미보카📩",
-          editingLabel: false,
-          url: content.vocaUrl,
-        };
-      }
-
-      const diary: Record<string, DiaryConfig> = {
+      const mommyVoca: Record<string, MommyVocaConfig> = {
         [key]: {
-          label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
-          url: content.diaryUrl || DIARY_DEFAULT_URL,
+          label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "마미 보카",
+          url: content.mommyVoca || MOMMYVOCA_DEFAULT_URL,
           editingLabel: false,
           editingUrl: false,
         }
@@ -273,8 +252,7 @@ export default function ContentGeneration({
       setMessages(msg);
       setGroupTargets(tgt);
       setAudioConfig(audio);
-      setVocaConfigs(voca);
-      setDiaryConfigs(diary);
+      setMommyVocaConfigs(mommyVoca);
       setApprovedKeys(content.status ? new Set([key]) : new Set());
 
       // 9개 레벨 상태 다시 조회
@@ -301,11 +279,8 @@ export default function ContentGeneration({
       }
     }));
 
-  const updateVoca = (key: string, patch: Partial<VocaConfig>): void =>
-    setVocaConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
-
-  const updateDiary = (key: string, patch: Partial<DiaryConfig>): void =>
-    setDiaryConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const updateMommyVoca = (key: string, patch: Partial<MommyVocaConfig>): void =>
+    setMommyVocaConfigs((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
 
   /** 오디오 생성 */
   const generateAudio = async (key: string, role: "mom" | "child"): Promise<void> => {
@@ -413,9 +388,9 @@ export default function ContentGeneration({
       return;
     }
 
-    const diaryUrl = diaryConfigs?.[key]?.url || "";
-    if (!diaryUrl || diaryUrl.trim() === "") {
-      alert("다이어리 URL을 입력해주세요.");
+    const mommyVocaUrl = mommyVocaConfigs?.[key]?.url || "";
+    if (!mommyVocaUrl || mommyVocaUrl.trim() === "") {
+      alert("마미 보카 URL을 입력해주세요.");
       return;
     }
 
@@ -427,7 +402,7 @@ export default function ContentGeneration({
         userLevel: momLevel,
         childLevel: childLevel,
         content: messageText,
-        diaryUrl: diaryUrl
+        mommyVoca: mommyVocaUrl
       };
 
       const contentId = await contentGenerationService.updateContent(
@@ -443,6 +418,9 @@ export default function ContentGeneration({
 
       // currentContent 업데이트
       setCurrentContent(content);
+
+      // mommyVoca URL 업데이트 (서버에서 받은 mommyVoca 값 반영)
+      updateMommyVoca(key, { url: content.mommyVoca || "" });
 
       // 9개 레벨 상태 다시 조회
       await loadMessageType(selectedChannel.channelId, contentDate);
@@ -567,7 +545,6 @@ export default function ContentGeneration({
         key,
         productId,
         productLabel: product.label,
-        hasVoca: product.hasVoca,
         child,
         mom,
         text,
@@ -596,10 +573,8 @@ export default function ContentGeneration({
     childBtnLabel: string;
     momUrl: string;
     childUrl: string;
-    vocaLabelText: string;
-    vocaUrl: string;
-    diaryLabelText: string;
-    diaryUrl: string;
+    mommyVocaLabelText: string;
+    mommyVocaUrl: string;
     bodyText: string;
   }
 
@@ -608,10 +583,8 @@ export default function ContentGeneration({
     childBtnLabel,
     momUrl,
     childUrl,
-    vocaLabelText,
-    vocaUrl,
-    diaryLabelText,
-    diaryUrl,
+    mommyVocaLabelText,
+    mommyVocaUrl,
     bodyText,
   }: PreviewBubbleProps): JSX.Element => (
     <div className="rounded-lg p-3" style={{ backgroundColor: "#84A1D0" }}>
@@ -645,22 +618,15 @@ export default function ContentGeneration({
             {/* 본문 */}
             <p className={`${MSG_STYLE.main} whitespace-pre-line`}>{bodyText}</p>
 
-            {/* 마미보카 (있으면) */}
-            {!!vocaUrl && (
-              <button className={BTN_NEUTRAL} onClick={() => alert(`[링크 이동] ${vocaUrl}`)}>
-                {vocaLabelText}
+            {/* 마미 보카 */}
+            {!!mommyVocaUrl && (
+              <button
+                className={BTN_NEUTRAL}
+                onClick={() => alert(`[페이지 이동] ${mommyVocaUrl}`)}
+              >
+                {mommyVocaLabelText}
               </button>
             )}
-
-            {/* 오늘의 문장 만들기 */}
-            <button
-              className={BTN_NEUTRAL}
-              onClick={() =>
-                diaryUrl ? alert(`[페이지 이동] ${diaryUrl}`) : alert("연결 URL이 설정되지 않았습니다.")
-              }
-            >
-              {diaryLabelText}
-            </button>
           </div>
         </div>
       </div>
@@ -908,17 +874,16 @@ export default function ContentGeneration({
                                   }
                                 });
 
-                                // 다이어리 설정
-                                setDiaryConfigs({
+                                // 마미 보카 설정
+                                setMommyVocaConfigs({
                                   [key]: {
-                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
-                                    url: content.diaryUrl || "",
+                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "마미 보카",
+                                    url: content.mommyVoca || "",
                                     editingLabel: false,
                                     editingUrl: false,
                                   }
                                 });
 
-                                setVocaConfigs({});
                                 setApprovedKeys(content.status ? new Set([key]) : new Set());
                               } else {
                                 // 콘텐츠가 없으면 빈 상태로 설정
@@ -950,17 +915,16 @@ export default function ContentGeneration({
                                   }
                                 });
 
-                                // 다이어리 설정 (빈 상태)
-                                setDiaryConfigs({
+                                // 마미 보카 설정 (빈 상태)
+                                setMommyVocaConfigs({
                                   [key]: {
-                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                    label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "마미 보카",
                                     url: "",
                                     editingLabel: false,
                                     editingUrl: false,
                                   }
                                 });
 
-                                setVocaConfigs({});
                                 setApprovedKeys(new Set());
                               }
                             } catch (error: any) {
@@ -991,15 +955,14 @@ export default function ContentGeneration({
                                   },
                                 }
                               });
-                              setDiaryConfigs({
+                              setMommyVocaConfigs({
                                 [key]: {
-                                  label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "오늘의 문장 만들기✏️",
+                                  label: selectedLanguage === "JPN" ? "今日の一文を作る✏️" : "마미 보카",
                                   url: "",
                                   editingLabel: false,
                                   editingUrl: false,
                                 }
                               });
-                              setVocaConfigs({});
                               setApprovedKeys(new Set());
                             }
                           }}
@@ -1063,13 +1026,11 @@ export default function ContentGeneration({
           {items.map((row) => {
             const key = row.key;
             const text = messages[key] || "";
-            const hasVoca = row.hasVoca;
 
             const mom = audioConfig?.[key]?.mom || {} as AudioSettings;
             const child = audioConfig?.[key]?.child || {} as AudioSettings;
 
-            const voca = hasVoca ? vocaConfigs?.[key] : null;
-            const diary = diaryConfigs?.[key];
+            const mommyVoca = mommyVocaConfigs?.[key];
 
             const isApproved = approvedKeys.has(key);
 
@@ -1312,20 +1273,20 @@ export default function ContentGeneration({
                       </div>
                     </section>
 
-                    {/* (C) 부가 버튼: 보카 / 오늘의 문장 */}
-                    {hasVoca && voca && (
+                    {/* (C) 마미 보카 URL */}
+                    {mommyVoca && (
                       <section className="border rounded-lg">
                         <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
-                          {voca.editingLabel ? (
+                          {mommyVoca.editingLabel ? (
                             <div className="flex items-center gap-2">
                               <input
                                 className="border rounded px-2 py-1 text-[12px]"
-                                value={voca.label || ""}
-                                onChange={(e) => updateVoca(key, { label: e.target.value })}
+                                value={mommyVoca.label || ""}
+                                onChange={(e) => updateMommyVoca(key, { label: e.target.value })}
                               />
                               <button
                                 className={BTN_SECONDARY}
-                                onClick={() => updateVoca(key, { editingLabel: false })}
+                                onClick={() => updateMommyVoca(key, { editingLabel: false })}
                               >
                                 완료
                               </button>
@@ -1333,51 +1294,10 @@ export default function ContentGeneration({
                           ) : (
                             <button
                               className="text-[13px] font-semibold text-slate-800 underline underline-offset-4"
-                              onClick={() => updateVoca(key, { editingLabel: true })}
+                              onClick={() => updateMommyVoca(key, { editingLabel: true })}
                               title="클릭하여 버튼명을 수정할 수 있습니다."
                             >
-                              {voca.label || vocaDefaultLabel}
-                            </button>
-                          )}
-                        </header>
-                        <div className="p-3">
-                          <label className="block text-[12px] text-slate-600 mb-1">URL</label>
-                          <div className="flex gap-2">
-                            <input
-                              className="flex-1 p-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                              placeholder="https://voca.example.com/..."
-                              value={voca.url || ""}
-                              onChange={(e) => updateVoca(key, { url: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      </section>
-                    )}
-
-                    {diary && (
-                      <section className="border rounded-lg">
-                        <header className="px-3 py-2 border-b bg-gray-50 text-[12px] font-semibold text-slate-700">
-                          {diary.editingLabel ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                className="border rounded px-2 py-1 text-[12px]"
-                                value={diary.label || ""}
-                                onChange={(e) => updateDiary(key, { label: e.target.value })}
-                              />
-                              <button
-                                className={BTN_SECONDARY}
-                                onClick={() => updateDiary(key, { editingLabel: false })}
-                              >
-                                완료
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              className="text-[13px] font-semibold text-slate-800 underline underline-offset-4"
-                              onClick={() => updateDiary(key, { editingLabel: true })}
-                              title="클릭하여 버튼명을 수정할 수 있습니다."
-                            >
-                              {diary.label || diaryDefaultLabel}
+                              {mommyVoca.label || mommyVocaDefaultLabel}
                             </button>
                           )}
                         </header>
@@ -1385,12 +1305,12 @@ export default function ContentGeneration({
                           <label className="block text-[12px] text-slate-600 mb-1">URL</label>
                           <input
                             className="w-full p-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                            value={diary.url || ""}
-                            onChange={(e) => updateDiary(key, { url: e.target.value })}
-                            placeholder="https://mamitalk.example.com/diary"
+                            value={mommyVoca.url || ""}
+                            onChange={(e) => updateMommyVoca(key, { url: e.target.value })}
+                            placeholder="https://mamitalk.example.com/mommyvoca"
                           />
                           <div className="text-[12px] text-slate-600 mt-1">
-                            * URL을 수정한 후 하단의 '수정하기' 버튼을 눌러 저장하세요.
+                            * URL을 수정한 후 하단의 '메시지 생성하기' 버튼을 눌러 저장하세요.
                           </div>
                         </div>
                       </section>
@@ -1449,10 +1369,8 @@ export default function ContentGeneration({
                       childBtnLabel={child.editableLabel || audioButtonLabelDefaultChild}
                       momUrl={mom.url || ""}
                       childUrl={child.url || ""}
-                      vocaLabelText={voca?.label || vocaDefaultLabel}
-                      vocaUrl={hasVoca ? voca?.url || "" : ""}
-                      diaryLabelText={diary?.label || diaryDefaultLabel}
-                      diaryUrl={diary?.url || ""}
+                      mommyVocaLabelText={mommyVoca?.label || mommyVocaDefaultLabel}
+                      mommyVocaUrl={mommyVoca?.url || ""}
                       bodyText={text}
                     />
                   </div>

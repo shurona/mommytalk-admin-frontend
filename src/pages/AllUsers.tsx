@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { userService } from '../services/userService';
-import { Trash2, Plus, Edit, X, Search } from 'lucide-react';
+import { Plus, Edit, X, Search } from 'lucide-react';
 import {
   ChannelUser,
   UserDetail,
   Channel,
-  PageResponseDto
+  PageResponseDto,
+  Entitlement,
+  UserEntitlement
 } from '../types';
 
 interface AllUsersProps {
@@ -25,17 +27,6 @@ interface UserEditState {
   userLevel: number;
   childLevel: number;
   childName: string;
-}
-
-interface EntitlementEditState {
-  userId: number;
-  entitlements: {
-    id?: number;
-    productName: string;
-    serviceStart: string;
-    serviceEnd: string;
-    status: string;
-  }[];
 }
 
 interface ErrorAlertProps {
@@ -66,8 +57,14 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
   // 편집 관련 상태
   const [userEdit, setUserEdit] = useState<UserEditState | null>(null);
   const [savingUser, setSavingUser] = useState<boolean>(false);
-  const [entitlementEdit, setEntitlementEdit] = useState<EntitlementEditState | null>(null);
-  const [savingEntitlements, setSavingEntitlements] = useState<boolean>(false);
+
+  // 새로운 상품권 관리 상태
+  const [entitlements, setEntitlements] = useState<Entitlement[]>([]);  // 상품권 목록 (드롭다운용)
+  const [userEntitlements, setUserEntitlements] = useState<UserEntitlement[]>([]);  // 유저 상품권 목록
+  const [loadingEntitlements, setLoadingEntitlements] = useState<boolean>(false);
+  const [showAddEntitlementModal, setShowAddEntitlementModal] = useState<boolean>(false);
+  const [selectedEntitlementId, setSelectedEntitlementId] = useState<number | null>(null);
+  const [addingEntitlement, setAddingEntitlement] = useState<boolean>(false);
 
   // API 호출 함수들
   const loadUsers = async (page = 0, search = ''): Promise<void> => {
@@ -106,6 +103,25 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
     }
   };
 
+  // 상품권 목록 로드 (드롭다운용)
+  const loadEntitlements = async (): Promise<void> => {
+    if (!selectedChannel?.channelId) {
+      setEntitlements([]);
+      return;
+    }
+
+    try {
+      setLoadingEntitlements(true);
+      const entitlementList = await userService.getEntitlements(selectedChannel.channelId);
+      setEntitlements(entitlementList);
+    } catch (err: any) {
+      console.error('Failed to load entitlements:', err);
+      setError(err.response?.data?.message || '상품권 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setLoadingEntitlements(false);
+    }
+  };
+
   // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
     if (selectedChannel?.channelId) {
@@ -113,6 +129,7 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
       setSelectedUserId(null);
       setSelectedUser(null);
       loadUsers(0, q);
+      loadEntitlements(); // 상품권 목록 로드
     }
   }, [selectedChannel?.channelId]);
 
@@ -156,6 +173,24 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
       setLoadingDetail(true);
       const user = await userService.getUserById(selectedChannel.channelId, userId);
       setSelectedUser(user);
+
+      // UserDetail의 entitlements를 UserEntitlement 형식으로 변환
+      if (user.entitlements && user.entitlements.length > 0) {
+        const mappedEntitlements = user.entitlements.map(ent => ({
+          userEntitlementId: ent.userEntitlementId,
+          userId: user.userId,
+          userGroupId: null,
+          groupId: null,
+          entitlementId: ent.entitlementId,
+          entitlementName: ent.entitlementName,
+          status: ent.status.toUpperCase() as 'ACTIVE' | 'INACTIVE' | 'EXPIRED',
+          startDate: ent.serviceStart,
+          endDate: ent.serviceEnd
+        }));
+        setUserEntitlements(mappedEntitlements);
+      } else {
+        setUserEntitlements([]);
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || '사용자 상세 정보를 불러오는데 실패했습니다.');
       console.error('Failed to load user detail:', err);
@@ -164,13 +199,125 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
     }
   };
 
+  // 유저 상품권 목록 재로드 (수정 후 새로고침용)
+  const reloadUserEntitlements = async (userId: number): Promise<void> => {
+    if (!selectedChannel?.channelId) return;
+
+    try {
+      // UserDetail을 다시 조회해서 최신 entitlements 가져오기
+      const user = await userService.getUserById(selectedChannel.channelId, userId);
+
+      if (user.entitlements && user.entitlements.length > 0) {
+        const mappedEntitlements = user.entitlements.map(ent => ({
+          userEntitlementId: ent.userEntitlementId,
+          userId: user.userId,
+          userGroupId: null,
+          groupId: null,
+          entitlementId: ent.entitlementId,
+          entitlementName: ent.entitlementName,
+          status: ent.status.toUpperCase() as 'ACTIVE' | 'INACTIVE' | 'EXPIRED',
+          startDate: ent.serviceStart,
+          endDate: ent.serviceEnd
+        }));
+        setUserEntitlements(mappedEntitlements);
+      } else {
+        setUserEntitlements([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to reload user entitlements:', err);
+      setError(err.response?.data?.message || '유저 상품권 목록을 불러오는데 실패했습니다.');
+    }
+  };
+
+  // 이용권 추가 처리
+  const handleAddEntitlement = async (): Promise<void> => {
+    if (!selectedChannel?.channelId || !selectedUserId || !selectedEntitlementId) {
+      setError('상품권을 선택해주세요.');
+      return;
+    }
+
+    try {
+      setAddingEntitlement(true);
+
+      // 기본값: ACTIVE, startDate=오늘, endDate=1년 뒤
+      const today = new Date();
+      const oneYearLater = new Date();
+      oneYearLater.setFullYear(today.getFullYear() + 1);
+
+      const startDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+      const endDate = oneYearLater.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      await userService.addUserEntitlement(selectedChannel.channelId, {
+        userId: selectedUserId,
+        channelId: selectedChannel.channelId,
+        entitlementId: selectedEntitlementId,
+        status: 'ACTIVE',
+        startDate,
+        endDate
+      });
+
+      // 성공 시 모달 닫고 목록 새로고침
+      setShowAddEntitlementModal(false);
+      setSelectedEntitlementId(null);
+      await reloadUserEntitlements(selectedUserId);
+      setError(null);
+    } catch (err: any) {
+      console.error('Failed to add entitlement:', err);
+      setError(err.response?.data?.message || '이용권 추가에 실패했습니다.');
+    } finally {
+      setAddingEntitlement(false);
+    }
+  };
+
+  // 개별 이용권 수정 처리
+  const handleUpdateEntitlement = async (
+    userEntitlementId: number,
+    field: 'status' | 'endDate',
+    value: string
+  ): Promise<void> => {
+    if (!selectedChannel?.channelId || !selectedUserId) return;
+
+    try {
+      // 현재 이용권 찾기
+      const currentEntitlement = userEntitlements.find(e => e.userEntitlementId === userEntitlementId);
+
+      if (!currentEntitlement) {
+        setError('이용권 정보를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 요청 데이터 구성
+      const updateData: any = {
+        endDate: field === 'endDate' ? value : currentEntitlement.endDate
+      };
+
+      if (field === 'status') {
+        updateData.status = value as 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
+      }
+
+      await userService.updateUserEntitlementById(
+        selectedChannel.channelId,
+        userEntitlementId,
+        updateData
+      );
+
+      // 성공 시 목록 새로고침
+      await reloadUserEntitlements(selectedUserId);
+      setError(null);
+    } catch (err: any) {
+      console.error('Failed to update entitlement:', err);
+      setError(err.response?.data?.message || '이용권 수정에 실패했습니다.');
+    }
+  };
+
   // 사용자 선택
   const handleUserSelect = (userId: number): void => {
     setSelectedUserId(userId);
     if (userId) {
-      loadUserDetail(userId);
+      loadUserDetail(userId); // 상세 정보와 함께 entitlements도 로드됨
     } else {
       setSelectedUser(null);
+      setUserEntitlements([]);
     }
   };
 
@@ -212,88 +359,6 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
     }
   };
 
-  // 이용권 편집
-  const startEntitlementEdit = (user: UserDetail): void => {
-    setEntitlementEdit({
-      userId: user.userId,
-      entitlements: (user.entitlements || []).map(ent => ({
-        id: ent.id,
-        productName: ent.productName,
-        serviceStart: ent.serviceStart,
-        serviceEnd: ent.serviceEnd,
-        status: ent.status
-      }))
-    });
-  };
-
-  const updateEntitlement = (index: number, field: string, value: string): void => {
-    setEntitlementEdit(prev => prev ? ({
-      ...prev,
-      entitlements: prev.entitlements.map((ent, i) =>
-        i === index ? { ...ent, [field]: value } : ent
-      )
-    }) : null);
-  };
-
-  const addEntitlement = (): void => {
-    setEntitlementEdit(prev => prev ? ({
-      ...prev,
-      entitlements: [...prev.entitlements, {
-        productName: '',
-        serviceStart: '',
-        serviceEnd: '',
-        status: 'active'
-      }]
-    }) : null);
-  };
-
-  const removeEntitlement = (index: number): void => {
-    setEntitlementEdit(prev => prev ? ({
-      ...prev,
-      entitlements: prev.entitlements.filter((_, i) => i !== index)
-    }) : null);
-  };
-
-  const saveEntitlements = async (): Promise<void> => {
-    if (!entitlementEdit) return;
-
-    try {
-      setSavingEntitlements(true);
-      await userService.updateUserEntitlements(selectedChannel!.channelId, entitlementEdit.userId, entitlementEdit.entitlements);
-
-      // 목록 및 상세정보 새로고침
-      await loadUsers(currentPage, q);
-      if (selectedUserId) {
-        await loadUserDetail(selectedUserId);
-      }
-
-      setEntitlementEdit(null);
-    } catch (err: any) {
-      setError(err.response?.data?.message || '이용권 정보 수정에 실패했습니다.');
-      console.error('Failed to update entitlements:', err);
-    } finally {
-      setSavingEntitlements(false);
-    }
-  };
-
-  const deleteEntitlement = async (entitlementId: number): Promise<void> => {
-    if (!selectedUserId || !entitlementId) return;
-
-    if (!confirm('이용권을 삭제하시겠습니까?')) return;
-
-    try {
-      await userService.deleteUserEntitlement(selectedChannel!.channelId, selectedUserId, entitlementId);
-
-      // 목록 및 상세정보 새로고침
-      await loadUsers(currentPage, q);
-      if (selectedUserId) {
-        await loadUserDetail(selectedUserId);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || '이용권 삭제에 실패했습니다.');
-      console.error('Failed to delete entitlement:', err);
-    }
-  };
 
   // 에러 표시 컴포넌트
   const ErrorAlert = ({ message, onClose }: ErrorAlertProps) => (
@@ -538,149 +603,72 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-medium">상품별 이용권</div>
                     <button
-                      onClick={() => startEntitlementEdit(selectedUser)}
-                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center space-x-1"
+                      onClick={() => setShowAddEntitlementModal(true)}
+                      className="text-sm text-green-600 hover:text-green-800 flex items-center space-x-1"
                     >
-                      <Edit className="h-3 w-3" />
-                      <span>편집</span>
+                      <Plus className="h-3 w-3" />
+                      <span>추가</span>
                     </button>
                   </div>
 
-                  {entitlementEdit?.userId === selectedUserId ? (
-                    // 이용권 편집 모드
-                    <div className="space-y-3">
-                      {entitlementEdit.entitlements.map((ent, index) => (
-                        <div key={index} className="border rounded p-3 bg-gray-50">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium">이용권 #{index + 1}</span>
-                            <button
-                              onClick={() => removeEntitlement(index)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-500">상품명</label>
-                              <input
-                                className="w-full border rounded p-2 text-sm"
-                                value={ent.productName}
-                                onChange={(e) => updateEntitlement(index, 'productName', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500">상태</label>
-                              <select
-                                className="w-full border rounded p-2 text-sm"
-                                value={ent.status}
-                                onChange={(e) => updateEntitlement(index, 'status', e.target.value)}
-                              >
-                                <option value="active">활성</option>
-                                <option value="inactive">비활성</option>
-                                <option value="expired">만료</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500">시작일</label>
-                              <input
-                                type="date"
-                                className="w-full border rounded p-2 text-sm"
-                                value={ent.serviceStart}
-                                onChange={(e) => updateEntitlement(index, 'serviceStart', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500">종료일</label>
-                              <input
-                                type="date"
-                                className="w-full border rounded p-2 text-sm"
-                                value={ent.serviceEnd}
-                                onChange={(e) => updateEntitlement(index, 'serviceEnd', e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                  {/* 이용권 조회 모드 (개별 편집 가능) */}
+                  <div className="bg-gray-50 rounded border overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-gray-500 bg-gray-100">
+                          <th className="px-3 py-2 text-left">상품명</th>
+                          <th className="px-3 py-2 text-left">시작일</th>
+                          <th className="px-3 py-2 text-left">종료일</th>
+                          <th className="px-3 py-2 text-left">상태</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userEntitlements.map((e) => {
+                          const entitlementId = e.userEntitlementId || (e as any).id;
 
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={addEntitlement}
-                          className="flex items-center space-x-1 px-3 py-2 border border-dashed border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-50"
-                        >
-                          <Plus className="h-4 w-4" />
-                          <span>이용권 추가</span>
-                        </button>
-                      </div>
-
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={saveEntitlements}
-                          disabled={savingEntitlements}
-                          className="flex-1 bg-blue-600 text-white py-2 rounded text-sm disabled:opacity-50"
-                        >
-                          {savingEntitlements ? '저장 중...' : '저장'}
-                        </button>
-                        <button
-                          onClick={() => setEntitlementEdit(null)}
-                          className="px-3 bg-gray-100 text-gray-800 rounded text-sm"
-                        >
-                          취소
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    // 이용권 조회 모드
-                    <div className="bg-gray-50 rounded border overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-gray-500 bg-gray-100">
-                            <th className="px-3 py-2 text-left">상품명</th>
-                            <th className="px-3 py-2 text-left">시작일</th>
-                            <th className="px-3 py-2 text-left">종료일</th>
-                            <th className="px-3 py-2 text-left">상태</th>
-                            <th className="px-3 py-2 text-left">관리</th>
+                          return (
+                            <tr key={entitlementId || Math.random()} className="border-t">
+                              <td className="px-3 py-2">{e.entitlementName}</td>
+                              <td className="px-3 py-2 text-gray-500">{e.startDate}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="date"
+                                  value={e.endDate}
+                                  onChange={(ev) => handleUpdateEntitlement(entitlementId, 'endDate', ev.target.value)}
+                                  className="border rounded px-2 py-1 text-xs w-32"
+                                  min={new Date().toISOString().split('T')[0]}
+                                  disabled={!entitlementId}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={e.status}
+                                  onChange={(ev) => handleUpdateEntitlement(entitlementId, 'status', ev.target.value)}
+                                  className={`rounded px-2 py-1 text-xs border ${
+                                    e.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    e.status === 'EXPIRED' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-50 text-gray-700 border-gray-200'
+                                  }`}
+                                  disabled={!entitlementId}
+                                >
+                                  <option value="ACTIVE">활성</option>
+                                  <option value="INACTIVE">비활성</option>
+                                  <option value="EXPIRED">만료</option>
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {userEntitlements.length === 0 && (
+                          <tr>
+                            <td className="px-3 py-6 text-center text-gray-500" colSpan={4}>
+                              이용권 정보가 없습니다.
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedUser.entitlements || []).map((e, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="px-3 py-2">{e.productName}</td>
-                              <td className="px-3 py-2">{e.serviceStart}</td>
-                              <td className="px-3 py-2">{e.serviceEnd}</td>
-                              <td className="px-3 py-2">
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  e.status === 'active' ? 'bg-green-100 text-green-700' :
-                                  e.status === 'expired' ? 'bg-red-100 text-red-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {e.status === 'active' ? '활성' : e.status === 'expired' ? '만료' : '비활성'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2">
-                                {e.id && (
-                                  <button
-                                    onClick={() => deleteEntitlement(e.id!)}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="삭제"
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                          {(!selectedUser.entitlements || selectedUser.entitlements.length === 0) && (
-                            <tr>
-                              <td className="px-3 py-6 text-center text-gray-500" colSpan={5}>
-                                이용권 정보가 없습니다.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
 
                   <div className="border-t my-3" />
                   {userEdit?.userId === selectedUserId ? (
@@ -768,6 +756,71 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
           )}
         </div>
       </div>
+
+      {/* 이용권 추가 모달 */}
+      {showAddEntitlementModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[9999]">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-96">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">이용권 추가</h3>
+              <button
+                onClick={() => {
+                  setShowAddEntitlementModal(false);
+                  setSelectedEntitlementId(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  상품권 선택
+                </label>
+                <select
+                  value={selectedEntitlementId || ''}
+                  onChange={(e) => setSelectedEntitlementId(Number(e.target.value))}
+                  className="w-full border rounded p-2 text-sm"
+                >
+                  <option value="">상품권을 선택하세요</option>
+                  {entitlements.map((ent) => (
+                    <option key={ent.id} value={ent.id}>
+                      {ent.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+                <div>• 상태: <b>활성 (ACTIVE)</b></div>
+                <div>• 시작일: <b>오늘</b></div>
+                <div>• 종료일: <b>1년 후</b></div>
+              </div>
+
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleAddEntitlement}
+                  disabled={!selectedEntitlementId || addingEntitlement}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingEntitlement ? '추가 중...' : '추가'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddEntitlementModal(false);
+                    setSelectedEntitlementId(null);
+                  }}
+                  className="px-4 bg-gray-100 text-gray-800 rounded text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

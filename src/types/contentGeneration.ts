@@ -23,8 +23,7 @@ export interface GeneratedContent {
   momAudioText: string;
   childAudioUrl: string;
   childAudioText: string;
-  vocaUrl: string | null;
-  diaryUrl: string;
+  mommyVoca: string;
   status: boolean; // true: 승인됨(approved), false: 생성됨(generated)
   createdAt: string;
   updatedAt: string;
@@ -40,8 +39,8 @@ export interface ContentUpdateRequest {
   userLevel: number; // 1-3
   childLevel: number; // 1-3
   content: string; // 메시지 내용
-  diaryUrl: string; // 다이어리 URL
-  // 추후 추가 예정: momAudioUrl, childAudioUrl, vocaUrl 등
+  mommyVoca: string; // 마미 보카 URL
+  // 추후 추가 예정: momAudioUrl, childAudioUrl 등
 }
 
 export interface ContentTestRequest {

@@ -153,6 +153,13 @@ function AdminApp(): JSX.Element {
                 <ServiceGroups selectedChannel={selectedChannel} />
               )
             } />
+            <Route path="/service-groups/:groupId" element={
+              loadingChannels ? (
+                <LoadingPage title="👥 회원 그룹 관리" />
+              ) : (
+                <ServiceGroups selectedChannel={selectedChannel} />
+              )
+            } />
 
             {/* 나머지 페이지들 */}
             <Route path="/order-list" element={<OrderList />} />
