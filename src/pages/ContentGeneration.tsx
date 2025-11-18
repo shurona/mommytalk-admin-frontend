@@ -174,6 +174,16 @@ export default function ContentGeneration({
     loadMessageType(selectedChannel.channelId, contentDate);
   }, [selectedChannel, contentDate]);
 
+  // 날짜 변경 시 생성된 콘텐츠 관련 상태 초기화
+  useEffect(() => {
+    setCurrentContent(null);
+    setMessages(null);
+    setAudioConfig({});
+    setMommyVocaConfigs({});
+    setApprovedKeys(new Set());
+    setGroupTargets({});
+  }, [contentDate, selectedChannel]);
+
   /** 조회 및 생성: 없으면 생성 */
   const generateOrRetrieve = async (regenerate = false): Promise<void> => {
     if (!selectedChannel) {
@@ -1159,7 +1169,7 @@ export default function ContentGeneration({
                           </button>
                         </div>
 
-                        {mom.status === "success" && (
+                        {mom.url && (
                           <div className="grid grid-cols-3 gap-2 items-center">
                             <label className="text-[12px] text-slate-600 col-span-1">오디오 URL</label>
                             <input
@@ -1260,7 +1270,7 @@ export default function ContentGeneration({
                           </button>
                         </div>
 
-                        {child.status === "success" && (
+                        {child.url && (
                           <div className="grid grid-cols-3 gap-2 items-center">
                             <label className="text-[12px] text-slate-600 col-span-1">오디오 URL</label>
                             <input
