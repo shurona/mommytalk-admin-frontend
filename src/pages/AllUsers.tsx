@@ -263,7 +263,11 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
       setError(null);
     } catch (err: any) {
       console.error('Failed to add entitlement:', err);
-      setError(err.response?.data?.message || '이용권 추가에 실패했습니다.');
+      const message = err.response?.data?.message || err.message || '이용권 추가에 실패했습니다.';
+      setError(message);
+      if (message) {
+        window.alert(message);
+      }
     } finally {
       setAddingEntitlement(false);
     }
@@ -440,8 +444,8 @@ export default function AllUsers({ selectedChannel }: AllUsersProps) {
     );
   }
 
-  // 에러 발생
-  if (error) {
+  // 데이터가 전혀 없고 에러만 있는 경우에만 전체 에러 화면 표시
+  if (error && usersData.length === 0 && !loading) {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">👥 전체 회원</h1>
